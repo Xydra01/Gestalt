@@ -1,7 +1,8 @@
-"""Gestalt PC build crew — analysis task, budget allocation, mock validation."""
+"""Gestalt PC build crew — analysis, recommendation (with retries), deterministic validation."""
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import re
@@ -12,9 +13,29 @@ from crewai import Crew, Process, Task
 from dotenv import load_dotenv
 
 from agents import analysis_agent, recommendation_agent, resolve_llm
+from compatibility_checker import validate_build
 
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
+
+# Cap LLM TaskOutput payloads embedded in ``agent_trace`` (UI / JSON size).
+_TRACE_RAW_MAX = 12_000
+_TRACE_MSG_TAIL = 25
+
+# CrewAI ``task_callback`` must be a plain module-level function (pickle-friendly).
+_agent_trace_buffer: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
+    "gestalt_agent_trace_buffer", default=None
+)
+_task_trace_phase: contextvars.ContextVar[str] = contextvars.ContextVar("gestalt_task_trace_phase", default="")
+
+
+def gestalt_crew_task_trace_handler(output: Any) -> None:
+    """Append serialized :class:`~crewai.tasks.task_output.TaskOutput` to the active trace."""
+    buf = _agent_trace_buffer.get()
+    if buf is None:
+        return
+    phase = _task_trace_phase.get() or "crew"
+    _trace_task_completed(buf, phase, output)
 
 # --- Fallback when the LLM returns prose or invalid JSON ----------------------------
 
@@ -189,12 +210,6 @@ def load_parts() -> dict[str, Any]:
     }
 
 
-def validate_build(build: dict[str, Any]) -> dict[str, Any]:
-    """Mock validator until compatibility_checker.validate_build is wired."""
-    _ = build
-    return {"passed": True, "errors": []}
-
-
 # --- Recommendation: prompt, parse IDs, map to parts ---------------------------------
 
 # Order used when assembling the final build dict (Selector slot name -> parts.json key).
@@ -211,7 +226,7 @@ SLOT_TO_PARTS_KEY: dict[str, str] = {
 
 def draft_recommendation_prompt(
     analysis: dict[str, Any],
-    error: str,
+    error: str | None,
     allocation_category: str,
     rules_pct: dict[str, float],
     rules_usd: dict[str, float],
@@ -222,12 +237,14 @@ def draft_recommendation_prompt(
     with analysis, optional error text, calculated budget rules, and full parts JSON.
     """
     analysis_s = json.dumps(analysis, indent=2)
+    err_s = error or ""
+    previous_validation_line = ("Previous validation error: " + err_s) if err_s else ""
     rules_pct_s = json.dumps(rules_pct, indent=2)
     rules_usd_s = json.dumps(rules_usd, indent=2)
     parts_s = json.dumps(parts_data, indent=2)
     return f"""You are a PC parts selector. You have access to parts.json.
 Given this build analysis: {analysis_s}
-And this validation error (if any): {error}
+{previous_validation_line}
 
 Calculated allocation category: {allocation_category}
 Budget allocation (USD per slot — keys: gpu, cpu, mobo, ram, psu, case):
@@ -297,21 +314,71 @@ def build_dict_from_selected_ids(
     return build
 
 
+def total_price_for_build(build: dict[str, Any]) -> float:
+    """Sum ``price`` across recommendation slots (missing price treated as 0)."""
+    total = 0.0
+    for slot in RECOMMENDATION_SLOTS:
+        p = build.get(slot)
+        if isinstance(p, dict):
+            pr = p.get("price")
+            if isinstance(pr, (int, float)):
+                total += float(pr)
+    return round(total, 2)
+
+
+def _task_output_to_trace_dict(output: Any, crew_phase: str) -> dict[str, Any]:
+    """Serialize a CrewAI :class:`TaskOutput` (or fallback) for ``agent_trace``."""
+    if hasattr(output, "model_dump"):
+        d = output.model_dump()
+    else:
+        d = {"raw": str(output), "agent": "unknown", "description": ""}
+    d["kind"] = "llm_task_output"
+    d["crew_phase"] = crew_phase
+    raw = d.get("raw")
+    if isinstance(raw, str) and len(raw) > _TRACE_RAW_MAX:
+        d["raw"] = raw[:_TRACE_RAW_MAX] + "...(truncated)"
+    msgs = d.get("messages")
+    if isinstance(msgs, list) and msgs:
+        slim: list[Any] = []
+        for m in msgs[-_TRACE_MSG_TAIL:]:
+            if hasattr(m, "model_dump"):
+                slim.append(m.model_dump())
+            elif isinstance(m, dict):
+                slim.append(m)
+            else:
+                slim.append(str(m))
+        d["messages"] = slim
+    return d
+
+
+def _trace_task_completed(
+    agent_trace: list[dict[str, Any]],
+    crew_phase: str,
+    output: Any,
+) -> None:
+    """Append one task output dict (used by :func:`gestalt_crew_task_trace_handler` and tests)."""
+    agent_trace.append(_task_output_to_trace_dict(output, crew_phase))
+
+
 # -------------------------------------------------------------------------------------
 
 
 def run_build_assistant(user_input: str) -> str:
     """
-    Run analysis crew, then recommendation crew (when an LLM is configured), map IDs to parts.
+    Analysis (once) → recommendation loop (up to 3) with ``validate_build`` after each
+    Proposed build. Collects ``agent_trace`` for UI (task outputs + validation steps).
 
-    Returns JSON with analysis, allocation, optional recommendation_raw, selected_ids, and build.
+    Success: ``success``, ``build``, ``total``, ``savings`` (35% of total), ``analysis``, ``agent_trace``.
+    Exhausted retries: ``success: false``, ``error``, ``agent_trace``.
     """
     parts_data = load_parts()
+    agent_trace: list[dict[str, Any]] = [{"kind": "session_start", "user_input": user_input}]
+    trace_tok = _agent_trace_buffer.set(agent_trace)
 
     raw_output = ""
-    recommendation_result = ""
     llm_ready = resolve_llm() is not None
     if llm_ready:
+        agent_trace.append({"kind": "phase", "phase": "analysis", "status": "started"})
         analyst = analysis_agent()
         analysis_task = Task(
             description=(
@@ -330,16 +397,22 @@ def run_build_assistant(user_input: str) -> str:
             agent=analyst,
         )
 
-        crew = Crew(
-            agents=[analyst],
-            tasks=[analysis_task],
-            process=Process.sequential,
-            verbose=True,
-        )
+        phase_tok = _task_trace_phase.set("analysis")
         try:
-            raw_output = str(crew.kickoff())
-        except Exception as e:
-            raw_output = json.dumps({"_crew_error": str(e)})
+            crew = Crew(
+                agents=[analyst],
+                tasks=[analysis_task],
+                process=Process.sequential,
+                verbose=True,
+                task_callback=gestalt_crew_task_trace_handler,
+            )
+            try:
+                raw_output = str(crew.kickoff())
+            except Exception as e:
+                raw_output = json.dumps({"_crew_error": str(e)})
+                agent_trace.append({"kind": "crew_error", "phase": "analysis", "message": str(e)})
+        finally:
+            _task_trace_phase.reset(phase_tok)
 
     try:
         analysis = parse_analysis_result(raw_output)
@@ -355,59 +428,137 @@ def run_build_assistant(user_input: str) -> str:
         if inferred_uc:
             analysis["use_case"] = inferred_uc
 
+    agent_trace.append(
+        {
+            "kind": "analysis_complete",
+            "parsed_analysis": analysis,
+            "llm_used": llm_ready,
+        }
+    )
+
     category, rules_pct, rules_usd = budget_rules_for_analysis(analysis)
 
-    if llm_ready:
-        recommender = recommendation_agent()
-        recommendation_prompt = draft_recommendation_prompt(
-            analysis=analysis,
-            error="",
-            allocation_category=category,
-            rules_pct=rules_pct,
-            rules_usd=rules_usd,
-            parts_data=parts_data,
+    error: str | None = None
+    max_retries = 3
+
+    for attempt in range(max_retries):
+        agent_trace.append(
+            {
+                "kind": "retry_attempt",
+                "attempt": attempt + 1,
+                "max_retries": max_retries,
+                "prior_validation_error": error,
+            }
         )
-        recommendation_task = Task(
-            description=recommendation_prompt,
-            expected_output='{"selected_ids": {"cpu": "...", "gpu": "...", ...}}',
-            agent=recommender,
-        )
-        rec_crew = Crew(
-            agents=[recommender],
-            tasks=[recommendation_task],
-            process=Process.sequential,
-            verbose=True,
-        )
+
+        recommendation_result = ""
+        if llm_ready:
+            recommender = recommendation_agent()
+            recommendation_prompt = draft_recommendation_prompt(
+                analysis=analysis,
+                error=error or "",
+                allocation_category=category,
+                rules_pct=rules_pct,
+                rules_usd=rules_usd,
+                parts_data=parts_data,
+            )
+            recommendation_task = Task(
+                description=recommendation_prompt,
+                expected_output='{"selected_ids": {"cpu": "...", "gpu": "...", ...}}',
+                agent=recommender,
+            )
+            phase_tok = _task_trace_phase.set(f"recommendation_attempt_{attempt + 1}")
+            try:
+                rec_crew = Crew(
+                    agents=[recommender],
+                    tasks=[recommendation_task],
+                    process=Process.sequential,
+                    verbose=True,
+                    task_callback=gestalt_crew_task_trace_handler,
+                )
+                try:
+                    recommendation_result = str(rec_crew.kickoff())
+                except Exception as e:
+                    recommendation_result = json.dumps({"_crew_error": str(e)})
+                    agent_trace.append(
+                        {
+                            "kind": "crew_error",
+                            "phase": "recommendation",
+                            "attempt": attempt + 1,
+                            "message": str(e),
+                        }
+                    )
+            finally:
+                _task_trace_phase.reset(phase_tok)
+        else:
+            agent_trace.append(
+                {
+                    "kind": "recommendation_skipped",
+                    "reason": "no_llm_configured",
+                    "attempt": attempt + 1,
+                }
+            )
+
+        selected_ids: dict[str, str] = {}
         try:
-            recommendation_result = str(rec_crew.kickoff())
-        except Exception as e:
-            recommendation_result = json.dumps({"_crew_error": str(e)})
+            selected_ids = parse_selected_ids(recommendation_result)
+        except (TypeError, ValueError, KeyError):
+            selected_ids = {}
 
-    selected_ids: dict[str, str] = {}
-    try:
-        selected_ids = parse_selected_ids(recommendation_result)
-    except (TypeError, ValueError, KeyError):
-        selected_ids = {}
+        build = build_dict_from_selected_ids(selected_ids, parts_data)
+        validation = validate_build(build)
 
-    build = build_dict_from_selected_ids(selected_ids, parts_data)
+        agent_trace.append(
+            {
+                "kind": "validation",
+                "attempt": attempt + 1,
+                "passed": validation.get("passed"),
+                "errors": validation.get("errors", []),
+            }
+        )
 
-    payload: dict[str, Any] = {
-        "status": "recommendation_complete",
-        "analysis": analysis,
-        "allocation_category": category,
-        "allocation_rules": rules_pct,
-        "allocation_usd": rules_usd,
-        "parts_categories": {k: len(v) if isinstance(v, list) else 0 for k, v in parts_data.items()},
-        "selected_ids": selected_ids,
-        "build": build,
+        if validation.get("passed") is True:
+            total = total_price_for_build(build)
+            savings = round(total * 0.35, 2)
+            payload: dict[str, Any] = {
+                "success": True,
+                "build": build,
+                "total": total,
+                "savings": savings,
+                "analysis": analysis,
+                "agent_trace": agent_trace,
+            }
+            if os.environ.get("GESTALT_DEBUG"):
+                payload["raw_llm_output"] = raw_output[:4000]
+                payload["allocation_category"] = category
+                payload["allocation_rules"] = rules_pct
+                payload["allocation_usd"] = rules_usd
+                payload["selected_ids"] = selected_ids
+                payload["parsed_recommendation_raw"] = recommendation_result[:4000]
+            out = json.dumps(payload, indent=2)
+            print(out)
+            _agent_trace_buffer.reset(trace_tok)
+            return out
+
+        errs = validation.get("errors") or []
+        if isinstance(errs, list) and errs and isinstance(errs[0], dict):
+            fix = errs[0].get("fix")
+            if isinstance(fix, str) and fix.strip():
+                error = fix.strip()
+            else:
+                error = "Validation failed; choose different compatible parts."
+        else:
+            error = "Validation failed; choose different compatible parts."
+
+    fail: dict[str, Any] = {
+        "success": False,
+        "error": "Could not build compatible PC after 3 attempts",
+        "agent_trace": agent_trace,
     }
-    if os.environ.get("GESTALT_DEBUG"):
-        payload["raw_llm_output"] = raw_output[:4000]
-        payload["recommendation_raw"] = recommendation_result[:4000]
-
-    out = json.dumps(payload, indent=2)
-    print(out)
-    return out
+    out_fail = json.dumps(fail, indent=2)
+    print(out_fail)
+    _agent_trace_buffer.reset(trace_tok)
+    return out_fail
 
 
 def build_crew(topic: str = "parts compatibility") -> Crew:

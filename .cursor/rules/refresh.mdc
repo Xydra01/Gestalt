@@ -1,0 +1,24 @@
+---
+description: Structured pipeline for crash logs and agent-assisted debugging
+alwaysApply: true
+---
+
+# Refresh (crash → fix loop)
+
+## Artifact
+Use `debug/crash_report.template.md`: copy it to `debug/latest.md` (or paste inline) and fill every section. Attach full logs if they exceed ~200 lines (`debug/logs/…` locally, gitignored if sensitive).
+
+## Agent workflow (strict order)
+1. **Reproduce**: confirm exact command, cwd, Python/uv versions; restate the failure in one sentence.
+2. **Trace**: point to the narrowest frame or config line; distinguish symptom vs root cause.
+3. **Fix**: smallest safe change; no drive-by refactors.
+4. **Verify**: **`uv run pytest`** plus the same manual command that failed, if applicable.
+5. **Prevent**: add or extend a regression test or assertion tied to the failure mode.
+
+## When logs are incomplete
+List **three** precise pieces of missing data (e.g. env var redaction, full traceback, `crewai run -v` slice) instead of guessing.
+
+## Output back to the user
+Summarize: root cause, files touched, tests run, and any follow-up risk.
+
+Human-readable copy: `refresh.md` in this folder.

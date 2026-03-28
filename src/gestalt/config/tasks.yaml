@@ -1,0 +1,15 @@
+research_task:
+  description: >
+    Research {topic}. Summarize constraints, common patterns, and risks.
+    Current calendar context: use 2026 as the default year when dating references unless the user specifies otherwise.
+  expected_output: >
+    A markdown list of at least 8 concrete bullets; each bullet should be actionable or factual, not vague advice.
+  agent: researcher
+
+reporting_task:
+  description: >
+    Using only the research context, write a short report on {topic} suitable for an engineering team.
+  expected_output: >
+    A markdown document with titled sections (Overview, Findings, Risks, Next steps). No code fences wrapping the whole document.
+  agent: reporting_analyst
+  output_file: output/report.md

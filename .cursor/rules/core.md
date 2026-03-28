@@ -1,0 +1,19 @@
+# Core (Python + TDD)
+
+## Scope
+Applies to all Python and project config that affects runtime behaviour.
+
+## Python
+- Target **Python 3.12–3.13** (see `pyproject.toml` / `.python-version`). Do not introduce 3.14-only APIs while the stack pins `<3.14`.
+- Prefer **clear, explicit code**: type hints on public functions and dataclasses/models; meaningful names; early returns over deep nesting.
+- Use **`uv`** for dependency changes (`uv add`, `uv remove`, `uv sync`); keep `pyproject.toml` / lockfile consistent.
+- **Never** blanket-catch `Exception` without re-raising or structured logging; **never** commit secrets (use `.env`, not the repo).
+
+## Test-driven workflow
+1. **Before** implementation: add or update a **failing** test that encodes the desired behaviour (or a dedicated contract test).
+2. Run **`uv run pytest`**; confirm the new test fails for the right reason.
+3. Implement the **smallest** change to pass tests; refactor only with green tests.
+4. For bugfixes: add a regression test that would have caught the bug.
+
+## Guardrail
+Do not add substantive **execution paths** (crew logic, tools, integrations, CLI behaviour) without tests or an explicitly documented exception in the same change (short comment + follow-up issue reference if the user tracks work that way).

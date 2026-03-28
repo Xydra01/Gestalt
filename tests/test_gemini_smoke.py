@@ -29,31 +29,40 @@ def _gemini_api_key() -> str | None:
     return k.strip() if k else None
 
 
-def _native_model_name() -> str:
+def _smoke_model_id() -> str:
     """
-    google.genai uses model ids like 'gemini-1.5-flash' (no 'gemini/' LiteLLM prefix).
+    Model id for google.genai (AI Studio) — not always the same string as CrewAI/LiteLLM.
+
+    Default `gemini-2.0-flash` tracks current AI Studio listings; override with GESTALT_GEMINI_SMOKE_MODEL.
     """
-    raw = os.environ.get("GESTALT_LLM_MODEL", "gemini/gemini-1.5-flash")
-    if raw.startswith("gemini/"):
-        return raw.split("/", 1)[1]
-    return raw
+    return os.environ.get("GESTALT_GEMINI_SMOKE_MODEL", "gemini-2.0-flash")
 
 
 @pytest.mark.skipif(not _gemini_api_key(), reason="No GEMINI_API_KEY or GOOGLE_API_KEY (set in .env)")
 def test_gemini_api_key_minimal_roundtrip() -> None:
-    """Single generateContent call; fails fast if the key is invalid or quota exceeded."""
+    """Single generateContent call; fails fast if the key is invalid or model is wrong."""
     from google import genai
+    from google.genai.errors import APIError
 
     key = _gemini_api_key()
     assert key
 
     client = genai.Client(api_key=key)
-    model = os.environ.get("GESTALT_GEMINI_SMOKE_MODEL") or _native_model_name()
+    model = _smoke_model_id()
 
-    response = client.models.generate_content(
-        model=model,
-        contents='Reply with exactly one word: "pong"',
-    )
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents='Reply with exactly one word: "pong"',
+        )
+    except APIError as e:
+        # google.genai uses .code (HTTP status), not .status_code
+        if getattr(e, "code", None) == 429:
+            pytest.skip(
+                "Gemini accepted the API key but returned 429 (quota/rate limit). "
+                "Retry later or check https://ai.google.dev/gemini-api/docs/rate-limits"
+            )
+        raise
 
     text = (getattr(response, "text", None) or "").strip()
     assert text, "Empty response from Gemini — check model name and API enablement"

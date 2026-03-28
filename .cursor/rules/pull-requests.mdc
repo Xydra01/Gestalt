@@ -5,6 +5,8 @@ alwaysApply: true
 
 # Pull requests
 
+Before `gh pr create` or finalizing a PR, follow **`.cursor/rules/git-workflow.mdc`**: **`git fetch origin`** and **`git pull origin main`** on the PR branch so `main` is integrated and conflicts are resolved locally.
+
 When creating or drafting a pull request for this repository (including via `gh pr create`):
 
 1. Read and follow **`.github/PULL_REQUEST_TEMPLATE.md`** — the PR title and body must include every section from that template: **Summary**, **Type of change** (checkboxes), **Changes**, **How to test**, and **Checklist** (checkboxes).

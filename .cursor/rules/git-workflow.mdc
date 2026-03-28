@@ -29,4 +29,4 @@ If not allowed to change branch (dirty tree), at minimum **`git fetch origin`** 
 
 ## Shell for `gh`
 
-`gh` (and similar tools that read **`GH_TOKEN`** from Bash login files) must be run under Bash — see **`.cursor/rules/pull-requests.mdc`** (`bash -lc 'gh …'`).
+Use **`./scripts/gh`** from the repo root (Homebrew on `PATH`) and wrap in **`bash -lc '…'`** when **`GH_TOKEN`** only loads from Bash — see **`.cursor/rules/pull-requests.mdc`**.

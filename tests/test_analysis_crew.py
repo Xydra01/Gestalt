@@ -88,7 +88,10 @@ def test_run_build_assistant_mocked_llm(mock_kickoff: object) -> None:
             )
 
     mock_kickoff.return_value = _Out()
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-fake"}):
+    with patch.dict(
+        os.environ,
+        {"GEMINI_API_KEY": "fake-gemini-key", "GOOGLE_API_KEY": "", "OPENAI_API_KEY": ""},
+    ):
         out = json.loads(run_build_assistant("I want a $1500 editing rig"))
     assert out["status"] == "analysis_complete"
     assert out["analysis"]["budget"] == 1500
@@ -101,7 +104,10 @@ def test_run_build_assistant_mocked_llm(mock_kickoff: object) -> None:
 
 @patch("crew.Crew.kickoff")
 def test_run_build_assistant_no_key_uses_heuristics(mock_kickoff: object) -> None:
-    with patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
+    with patch.dict(
+        os.environ,
+        {"GEMINI_API_KEY": "", "GOOGLE_API_KEY": "", "OPENAI_API_KEY": ""},
+    ):
         out = json.loads(run_build_assistant("I want a $1500 editing rig"))
     mock_kickoff.assert_not_called()
     assert out["analysis"]["budget"] == 1500

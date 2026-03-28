@@ -26,7 +26,7 @@ Versioned alongside the app: `README.md`, `LICENSE`, `pyproject.toml`, `uv.lock`
 cd Gestalt
 uv sync
 cp .env.example .env
-# Optional: LLM keys for CrewAI
+# Add GEMINI_API_KEY (Google AI Studio) for CrewAI agents — see .env.example
 uv run gestalt-web
 # http://127.0.0.1:5000
 ```
@@ -34,6 +34,16 @@ uv run gestalt-web
 ```bash
 uv run python crew.py
 ```
+
+### Verify Gemini API key (optional)
+
+With **`GEMINI_API_KEY`** set in `.env`, run a single minimal API call (skipped if the key is missing):
+
+```bash
+uv run pytest tests/test_gemini_smoke.py -v
+```
+
+Override the model for this check: **`GESTALT_GEMINI_SMOKE_MODEL`** (google.genai id, default **`gemini-2.5-flash`**). This is separate from **`GESTALT_LLM_MODEL`**, which uses CrewAI/LiteLLM naming.
 
 ## Git remote (SSH)
 

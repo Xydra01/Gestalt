@@ -5,7 +5,7 @@ description = "Gestalt: parts compatibility UI and CrewAI crew"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-    "crewai[tools]>=0.100.0",
+    "crewai[tools,google-genai]>=0.100.0",
     "flask>=3.0.0",
     "python-dotenv>=1.0.0",
 ]

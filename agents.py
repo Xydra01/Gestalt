@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from crewai import Agent
+import os
+from pathlib import Path
+from typing import Any
+
+from crewai import Agent, LLM
+from dotenv import load_dotenv
 
 # Exact prompts from Project_Plan.txt (Phase 2.1) — {user_input} / {analysis} / {error} are
 # filled by task descriptions when the crew is wired.
@@ -39,26 +44,51 @@ Budget allocation rules:
 
 Return ONLY a JSON object with selected part IDs."""
 
+# Default Gemini model (override with GESTALT_LLM_MODEL). Prefix `gemini/` routes via CrewAI/LiteLLM.
+_DEFAULT_GEMINI_MODEL = "gemini/gemini-2.5-flash"
+
+
+def resolve_llm() -> LLM | None:
+    """
+    Prefer Google Gemini (API key from AI Studio). No OpenAI key required.
+
+    Set `GEMINI_API_KEY` or `GOOGLE_API_KEY`. Optional: `GESTALT_LLM_MODEL` (e.g. gemini/gemini-1.5-flash).
+    """
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return None
+    model = os.environ.get("GESTALT_LLM_MODEL", _DEFAULT_GEMINI_MODEL)
+    return LLM(model=model, api_key=api_key)
+
 
 def analysis_agent() -> Agent:
     """Agent 1 – Analysis: parse user request into structured JSON."""
-    return Agent(
-        role="PC building analyst",
-        goal=(
+    llm = resolve_llm()
+    kwargs: dict[str, Any] = {
+        "role": "PC building analyst",
+        "goal": (
             "Follow your instructions exactly: output ONLY the JSON schema described in your backstory."
         ),
-        backstory=_ANALYSIS_PROMPT,
-        verbose=True,
-    )
+        "backstory": _ANALYSIS_PROMPT,
+        "verbose": True,
+    }
+    if llm is not None:
+        kwargs["llm"] = llm
+    return Agent(**kwargs)
 
 
 def recommendation_agent() -> Agent:
     """Agent 2 – Recommendation: select part IDs from parts.json given analysis and errors."""
-    return Agent(
-        role="PC parts selector",
-        goal=(
+    llm = resolve_llm()
+    kwargs: dict[str, Any] = {
+        "role": "PC parts selector",
+        "goal": (
             "Follow your instructions exactly: output ONLY a JSON object of selected part IDs."
         ),
-        backstory=_RECOMMENDATION_PROMPT,
-        verbose=True,
-    )
+        "backstory": _RECOMMENDATION_PROMPT,
+        "verbose": True,
+    }
+    if llm is not None:
+        kwargs["llm"] = llm
+    return Agent(**kwargs)

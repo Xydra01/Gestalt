@@ -1,0 +1,16 @@
+---
+description: Open GitHub PRs using the repo pull request template
+alwaysApply: true
+---
+
+# Pull requests
+
+Before `gh pr create` or finalizing a PR, follow **`.cursor/rules/git-workflow.mdc`**: **`git fetch origin`** and **`git pull origin main`** on the PR branch so `main` is integrated and conflicts are resolved locally.
+
+When creating or drafting a pull request for this repository (including via `gh pr create`):
+
+1. Read and follow **`.github/PULL_REQUEST_TEMPLATE.md`** — the PR title and body must include every section from that template: **Summary**, **Type of change** (checkboxes), **Changes**, **How to test**, and **Checklist** (checkboxes).
+2. Fill each section with concrete, accurate detail (what changed, why, how to verify, risk notes). Do not submit a one-line PR description.
+3. Prefer `gh pr create --body-file` with a complete body, or paste the filled template into `--body`, so GitHub receives the full structure.
+
+The template is the single source of truth for PR format in this project.

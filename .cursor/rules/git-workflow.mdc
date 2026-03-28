@@ -1,0 +1,28 @@
+---
+description: Sync with origin/main before branching, pushing, or opening PRs
+alwaysApply: true
+---
+
+# Git workflow (Gestalt)
+
+Always **`git fetch origin`** first, then integrate latest **`main`** with **`git pull origin main`** before any of the following. Resolve conflicts before continuing.
+
+## When to run it
+
+1. **Before creating a new branch** — Check out `main`, run `git pull origin main`, then `git checkout -b <new-branch>`. New work should branch from up-to-date `main`.
+
+2. **Before pushing commits** — On your feature branch, run `git pull origin main` (merges `main` into the branch) or rebase onto updated `main` if the team prefers that. Do not push a branch that should track `main` without having integrated latest `main` first.
+
+3. **Before opening or updating a pull request** — Same as (2): `git fetch origin` and `git pull origin main` on the PR branch so the PR is current and conflicts are caught locally.
+
+## Quick sequence (typical feature branch)
+
+```bash
+git fetch origin
+git checkout main
+git pull origin main
+git checkout <your-branch>   # or: git checkout -b <new-branch>
+git pull origin main           # when already on the feature branch, before push / gh pr create
+```
+
+If not allowed to change branch (dirty tree), at minimum **`git fetch origin`** then **`git pull origin main`** on the current branch before push or `gh pr create`.

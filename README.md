@@ -1,6 +1,6 @@
 # Gestalt
 
-Guardrail-first workspace for **parts compatibility** checks and optional **CrewAI** crews. Python **3.12–3.13** with [uv](https://docs.astral.sh/uv/).
+**Parts compatibility** UI (Flask) and optional **CrewAI** workflows. Python **3.12–3.13** with [uv](https://docs.astral.sh/uv/).
 
 ## Layout
 
@@ -15,9 +15,10 @@ gestalt/
 │   └── index.html
 ├── static/
 │   └── style.css
-├── .env                 # create locally (see .env.example); never commit
-└── ...
+└── .env                 # local only — copy from .env.example; never commit
 ```
+
+Versioned alongside the app: `README.md`, `LICENSE`, `pyproject.toml`, `uv.lock`, `.env.example`, `.gitignore`, `.python-version`.
 
 ## Quick start
 
@@ -25,12 +26,10 @@ gestalt/
 cd Gestalt
 uv sync
 cp .env.example .env
-# Optional: add LLM keys for CrewAI
+# Optional: LLM keys for CrewAI
 uv run gestalt-web
-# Open http://127.0.0.1:5000
+# http://127.0.0.1:5000
 ```
-
-Run the crew (needs provider credentials in `.env`):
 
 ```bash
 uv run python crew.py
@@ -38,18 +37,12 @@ uv run python crew.py
 
 ## Git remote (SSH)
 
-```text
-git@github.com:Xydra01/Gestalt.git
-```
+`git@github.com:Xydra01/Gestalt.git`
 
-## Pull requests (GitHub CLI)
+## Pull requests
 
-From a feature branch, push then run [`gh pr create`](https://cli.github.com/manual/gh_pr_create). Non-interactive use expects **`GH_TOKEN`** in the environment (for example `export GH_TOKEN=...` in `~/.bash_profile` for login shells).
-
-## Cursor guardrails
-
-See `.cursor/rules/` (`core`, `request`, `refresh`) and root `.cursorrules`.
+[`gh pr create`](https://cli.github.com/manual/gh_pr_create) after pushing a branch; set **`GH_TOKEN`** (e.g. in `~/.bash_profile`) for non-interactive use.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — [`LICENSE`](LICENSE).

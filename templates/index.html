@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestalt — Parts &amp; compatibility</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header>
+    <h1>Gestalt</h1>
+    <p class="tagline">Parts catalog and workspace compatibility</p>
+  </header>
+
+  <main>
+    <section aria-labelledby="catalog-heading">
+      <h2 id="catalog-heading">Full catalog</h2>
+      <p class="status {% if summary.catalog.ok %}ok{% else %}bad{% endif %}">
+        {% if summary.catalog.ok %}
+          All declared requirements are satisfied within the full catalog.
+        {% else %}
+          {{ summary.catalog.issues|length }} issue(s) in the full catalog.
+        {% endif %}
+      </p>
+      {% if summary.catalog.issues %}
+        <ul class="issues">
+          {% for issue in summary.catalog.issues %}
+            <li>{{ issue }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+
+    <section aria-labelledby="workspaces-heading">
+      <h2 id="workspaces-heading">Workspaces</h2>
+      <div class="workspace-grid">
+        {% for ws in summary.workspaces %}
+          <article class="workspace {% if ws.ok %}ok{% else %}bad{% endif %}">
+            <h3>{{ ws.name }}</h3>
+            <p class="meta">Parts: {{ ", ".join(ws.part_ids) }}</p>
+            {% if ws.ok %}
+              <p class="badge ok">Compatible</p>
+            {% else %}
+              <p class="badge bad">Incompatible</p>
+              <ul class="issues small">
+                {% for issue in ws.issues %}
+                  <li>{{ issue }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section aria-labelledby="parts-heading">
+      <h2 id="parts-heading">Registered parts</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Version</th>
+            <th>Requires</th>
+            <th>Provides</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in parts %}
+            <tr>
+              <td><code>{{ p.id }}</code></td>
+              <td>{{ p.name }}</td>
+              <td>{{ p.version }}</td>
+              <td>{{ (p.requires or [])|join(", ") or "—" }}</td>
+              <td>{{ (p.provides or [])|join(", ") or "—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="footer-note">
+      <p>
+        Crew orchestration lives in <code>crew.py</code> / <code>agents.py</code>
+        (CrewAI). Run <code>uv run python crew.py</code> only after configuring LLM keys in <code>.env</code>.
+      </p>
+    </section>
+  </main>
+</body>
+</html>

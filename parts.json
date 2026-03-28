@@ -1,0 +1,46 @@
+{
+  "parts": [
+    {
+      "id": "secrets_vault",
+      "name": "Secrets vault",
+      "version": "1.0.0",
+      "requires": [],
+      "provides": ["api_credentials"]
+    },
+    {
+      "id": "llm_bridge",
+      "name": "LLM bridge",
+      "version": "1.0.0",
+      "requires": ["api_credentials"],
+      "provides": ["llm"]
+    },
+    {
+      "id": "memory_index",
+      "name": "Memory index",
+      "version": "0.9.0",
+      "requires": ["llm"],
+      "provides": ["memory"]
+    },
+    {
+      "id": "ui_shell",
+      "name": "Web UI shell",
+      "version": "1.0.0",
+      "requires": [],
+      "provides": ["http_ui"]
+    }
+  ],
+  "workspaces": [
+    {
+      "name": "full_stack",
+      "part_ids": ["secrets_vault", "llm_bridge", "memory_index", "ui_shell"]
+    },
+    {
+      "name": "ui_only",
+      "part_ids": ["ui_shell"]
+    },
+    {
+      "name": "bad_combo",
+      "part_ids": ["memory_index", "ui_shell"]
+    }
+  ]
+}

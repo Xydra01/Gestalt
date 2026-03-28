@@ -1,30 +1,28 @@
 [project]
 name = "gestalt"
 version = "0.1.0"
-description = "Guardrail-first agentic workflows with CrewAI"
+description = "Guardrail-first Gestalt: parts compatibility UI and CrewAI crew"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "crewai[tools]>=0.100.0",
+    "flask>=3.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.scripts]
-gestalt = "gestalt.main:run"
-run_crew = "gestalt.main:run"
+gestalt-web = "app:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/gestalt"]
-
-[tool.crewai]
-type = "crew"
+[tool.setuptools]
+py-modules = ["app", "agents", "crew", "compatibility_checker"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["."]

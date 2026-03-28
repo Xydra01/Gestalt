@@ -1,13 +1,11 @@
-"""Minimal Flask UI for parts catalog and compatibility results."""
+"""Flask web UI for Gestalt PC Builder — mock /build until agents are wired."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from flask import Flask, render_template
+from flask import Flask, jsonify, render_template
 from dotenv import load_dotenv
-
-from compatibility_checker import load_parts_document, summarize
 
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
@@ -21,9 +19,32 @@ app = Flask(
 
 @app.route("/")
 def index() -> str:
-    doc = load_parts_document(_ROOT / "parts.json")
-    summary_data = summarize(doc)
-    return render_template("index.html", summary=summary_data, parts=doc.get("parts", []))
+    return render_template("index.html")
+
+
+@app.route("/build", methods=["POST"])
+def build():
+    # Mock data – later you'll replace with real agents
+    mock_build = {
+        "cpu": {"name": "AMD Ryzen 5 5600X", "price": 299},
+        "gpu": {"name": "NVIDIA RTX 3060", "price": 329},
+        "ram": {"name": "16GB DDR4 3200MHz", "price": 75},
+        "storage": {"name": "1TB NVMe SSD", "price": 100},
+        "motherboard": {"name": "B550 ATX", "price": 150},
+        "psu": {"name": "650W 80+ Gold", "price": 90},
+        "case": {"name": "Mid Tower", "price": 70},
+    }
+    total = sum(p["price"] for p in mock_build.values())
+    savings = 150  # mock savings
+    return jsonify(
+        {
+            "success": True,
+            "build": mock_build,
+            "total": total,
+            "savings": savings,
+            "analysis": "Mock analysis: This build is great for gaming.",
+        }
+    )
 
 
 def main() -> None:

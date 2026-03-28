@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# GitHub CLI with Homebrew on PATH (Cursor/agent shells often omit /opt/homebrew/bin).
+set -euo pipefail
+export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH:-}"
+# Cursor/agent shells often skip login files; GH_TOKEN may only exist in Bash profile.
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  _gh_tok=$(bash -lc 'printf %s "$GH_TOKEN"')
+  if [[ -n "$_gh_tok" ]]; then
+    export GH_TOKEN="$_gh_tok"
+  fi
+  unset _gh_tok
+fi
+if ! command -v gh >/dev/null 2>&1; then
+  echo "gestalt: gh not found. Install: brew install gh  (https://cli.github.com/)" >&2
+  exit 127
+fi
+exec gh "$@"

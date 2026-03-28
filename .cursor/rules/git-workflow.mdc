@@ -26,3 +26,7 @@ git pull origin main           # when already on the feature branch, before push
 ```
 
 If not allowed to change branch (dirty tree), at minimum **`git fetch origin`** then **`git pull origin main`** on the current branch before push or `gh pr create`.
+
+## Shell for `gh`
+
+Use **`./scripts/gh`** from the repo root (Homebrew on `PATH`) and wrap in **`bash -lc '…'`** when **`GH_TOKEN`** only loads from Bash — see **`.cursor/rules/pull-requests.mdc`**.

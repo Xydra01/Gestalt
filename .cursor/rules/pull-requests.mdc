@@ -5,6 +5,24 @@ alwaysApply: true
 
 # Pull requests
 
+## Shell: `gh` on PATH + Bash for tokens
+
+**Two issues:** (1) Cursor and some minimal shells omit **`/opt/homebrew/bin`**, so **`gh` is missing** even when Homebrew installed it. (2) **zsh** may not load **`GH_TOKEN`** from your Bash profile.
+
+**Preferred (tokens + Homebrew):** from the repo root, use the wrapper inside a login Bash so both PATH and `GH_TOKEN` apply:
+
+```bash
+bash -lc 'cd /path/to/Gestalt && ./scripts/gh pr create --base main --head feature/your-branch --title "..." --body "..."'
+bash -lc 'cd /path/to/Gestalt && ./scripts/gh pr list'
+bash -lc 'cd /path/to/Gestalt && ./scripts/gh auth status'
+```
+
+**If `gh` is already on your PATH** (e.g. after opening a new integrated terminal with **`.vscode/settings.json`**), you can use **`bash -lc 'gh …'`** only.
+
+The repo script **`scripts/gh`** prepends `/opt/homebrew/bin` and `/usr/local/bin` before calling `gh`. **`.vscode/settings.json`** prepends the same for **macOS integrated terminals** in Cursor/VS Code.
+
+Use the same **`bash -lc`** pattern for any CLI that only picks up API keys from Bash login/profile files.
+
 Before `gh pr create` or finalizing a PR, follow **`.cursor/rules/git-workflow.mdc`**: **`git fetch origin`** and **`git pull origin main`** on the PR branch so `main` is integrated and conflicts are resolved locally.
 
 When creating or drafting a pull request for this repository (including via `gh pr create`):

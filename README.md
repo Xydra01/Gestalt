@@ -26,7 +26,7 @@ Versioned alongside the app: `README.md`, `LICENSE`, `pyproject.toml`, `uv.lock`
 cd Gestalt
 uv sync
 cp .env.example .env
-# Optional: LLM keys for CrewAI
+# Add GEMINI_API_KEY (Google AI Studio) for CrewAI agents — see .env.example
 uv run gestalt-web
 # http://127.0.0.1:5000
 ```

@@ -11,7 +11,7 @@ from typing import Any
 from crewai import Crew, Process, Task
 from dotenv import load_dotenv
 
-from agents import analysis_agent, recommendation_agent
+from agents import analysis_agent, recommendation_agent, resolve_llm
 
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
@@ -233,7 +233,7 @@ def run_build_assistant(user_input: str) -> str:
     )
 
     raw_output = ""
-    if os.environ.get("OPENAI_API_KEY"):
+    if resolve_llm() is not None:
         try:
             raw_output = str(crew.kickoff())
         except Exception as e:
@@ -250,7 +250,7 @@ def run_build_assistant(user_input: str) -> str:
     if hinted is not None:
         analysis["budget"] = hinted
 
-    if not os.environ.get("OPENAI_API_KEY"):
+    if resolve_llm() is None:
         inferred_uc = infer_use_case_from_prompt(user_input)
         if inferred_uc:
             analysis["use_case"] = inferred_uc

@@ -12,9 +12,12 @@ from crew import (
     BUDGET_ALLOCATIONS,
     DEFAULT_ANALYSIS,
     budget_rules_for_analysis,
+    build_dict_from_selected_ids,
+    draft_recommendation_prompt,
     extract_budget_from_prompt,
     infer_use_case_from_prompt,
     parse_analysis_result,
+    parse_selected_ids,
     resolve_allocation_category,
     run_build_assistant,
 )
@@ -74,32 +77,45 @@ def test_extract_budget_from_prompt() -> None:
 
 @patch("crew.Crew.kickoff")
 def test_run_build_assistant_mocked_llm(mock_kickoff: object) -> None:
-    """Full pipeline with API key set: kickoff mocked to return strict JSON."""
+    """Analysis + recommendation crews: two kickoffs with JSON matching parts.json ids."""
 
-    class _Out:
-        def __str__(self) -> str:
-            return json.dumps(
-                {
-                    "budget": 1500,
-                    "use_case": "creative work",
-                    "priority": "max quality",
-                    "constraints": [],
-                }
-            )
+    analysis_json = json.dumps(
+        {
+            "budget": 1500,
+            "use_case": "creative work",
+            "priority": "max quality",
+            "constraints": [],
+        }
+    )
+    recommendation_json = json.dumps(
+        {
+            "selected_ids": {
+                "cpu": "amd-ryzen-5-7600",
+                "gpu": "nvidia-rtx-4060",
+                "motherboard": "gigabyte-b650m-ds3h",
+                "ram": "corsair-vengeance-lpx-16gb",
+                "psu": "corsair-cx650m",
+                "case": "deepcool-cc560",
+            }
+        }
+    )
 
-    mock_kickoff.return_value = _Out()
+    mock_kickoff.side_effect = [analysis_json, recommendation_json]
     with patch.dict(
         os.environ,
         {"GEMINI_API_KEY": "fake-gemini-key", "GOOGLE_API_KEY": "", "OPENAI_API_KEY": ""},
     ):
         out = json.loads(run_build_assistant("I want a $1500 editing rig"))
-    assert out["status"] == "analysis_complete"
+    assert out["status"] == "recommendation_complete"
     assert out["analysis"]["budget"] == 1500
     assert out["allocation_category"] == "creative"
     assert out["allocation_rules"] == BUDGET_ALLOCATIONS["creative"]
     assert out["allocation_usd"]["gpu"] == pytest.approx(1500 * 0.25)
     assert "cpus" in out["parts_categories"]
-    mock_kickoff.assert_called_once()
+    assert out["build"]["cpu"]["id"] == "amd-ryzen-5-7600"
+    assert out["build"]["gpu"]["id"] == "nvidia-rtx-4060"
+    assert out["selected_ids"]["motherboard"] == "gigabyte-b650m-ds3h"
+    assert mock_kickoff.call_count == 2
 
 
 @patch("crew.Crew.kickoff")
@@ -110,6 +126,44 @@ def test_run_build_assistant_no_key_uses_heuristics(mock_kickoff: object) -> Non
     ):
         out = json.loads(run_build_assistant("I want a $1500 editing rig"))
     mock_kickoff.assert_not_called()
+    assert out["status"] == "recommendation_complete"
     assert out["analysis"]["budget"] == 1500
     assert out["analysis"]["use_case"] == "creative work"
     assert out["allocation_category"] == "creative"
+    assert out["selected_ids"] == {}
+    assert out["build"]["cpu"].get("id") == "intel-core-i3-14100"
+
+
+def test_parse_selected_ids_fenced() -> None:
+    raw = """Here you go:
+```json
+{"selected_ids": {"cpu": "a", "gpu": "b", "motherboard": "m", "ram": "r", "psu": "p", "case": "c"}}
+```"""
+    d = parse_selected_ids(raw)
+    assert d["cpu"] == "a"
+    assert d["gpu"] == "b"
+
+
+def test_build_dict_fallback_when_slot_missing() -> None:
+    parts_data = {
+        "cpus": [{"id": "c-first", "price": 1}],
+        "gpus": [{"id": "g-first", "price": 2}],
+        "motherboards": [{"id": "mb-first", "price": 3}],
+        "ram": [{"id": "r-first", "price": 4}],
+        "psus": [{"id": "p-first", "price": 5}],
+        "cases": [{"id": "case-first", "price": 6}],
+    }
+    # LLM omits gpu -> first gpu
+    b = build_dict_from_selected_ids({"cpu": "c-first"}, parts_data)
+    assert b["cpu"]["id"] == "c-first"
+    assert b["gpu"]["id"] == "g-first"
+
+
+def test_draft_recommendation_prompt_contains_rules_and_catalog() -> None:
+    analysis = {"budget": 500, "use_case": "gaming", "priority": "balanced", "constraints": []}
+    cat, pct, usd = budget_rules_for_analysis(analysis)
+    parts = {"cpus": [{"id": "x", "price": 100}]}
+    text = draft_recommendation_prompt(analysis, "", cat, pct, usd, parts)
+    assert "500" in text or "gaming" in text
+    assert '"cpus"' in text or "cpus" in text
+    assert "selected_ids" in text

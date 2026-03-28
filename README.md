@@ -35,6 +35,16 @@ uv run gestalt-web
 uv run python crew.py
 ```
 
+### Verify Gemini API key (optional)
+
+With **`GEMINI_API_KEY`** set in `.env`, run a single minimal API call (skipped if the key is missing):
+
+```bash
+uv run pytest tests/test_gemini_smoke.py -v
+```
+
+Override the model for this check only: **`GESTALT_GEMINI_SMOKE_MODEL`** (e.g. `gemini-2.0-flash`). Otherwise it uses the same base model as **`GESTALT_LLM_MODEL`** (without the `gemini/` prefix for the native client).
+
 ## Git remote (SSH)
 
 `git@github.com:Xydra01/Gestalt.git`

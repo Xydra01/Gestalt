@@ -195,19 +195,121 @@ def validate_build(build: dict[str, Any]) -> dict[str, Any]:
     return {"passed": True, "errors": []}
 
 
+# --- Recommendation: prompt, parse IDs, map to parts ---------------------------------
+
+# Order used when assembling the final build dict (Selector slot name -> parts.json key).
+RECOMMENDATION_SLOTS: list[str] = ["cpu", "gpu", "motherboard", "ram", "psu", "case"]
+SLOT_TO_PARTS_KEY: dict[str, str] = {
+    "cpu": "cpus",
+    "gpu": "gpus",
+    "motherboard": "motherboards",
+    "ram": "ram",
+    "psu": "psus",
+    "case": "cases",
+}
+
+
+def draft_recommendation_prompt(
+    analysis: dict[str, Any],
+    error: str,
+    allocation_category: str,
+    rules_pct: dict[str, float],
+    rules_usd: dict[str, float],
+    parts_data: dict[str, Any],
+) -> str:
+    """
+    Task description for the Selector agent: same intent as agents._RECOMMENDATION_PROMPT,
+    with analysis, optional error text, calculated budget rules, and full parts JSON.
+    """
+    analysis_s = json.dumps(analysis, indent=2)
+    rules_pct_s = json.dumps(rules_pct, indent=2)
+    rules_usd_s = json.dumps(rules_usd, indent=2)
+    parts_s = json.dumps(parts_data, indent=2)
+    return f"""You are a PC parts selector. You have access to parts.json.
+Given this build analysis: {analysis_s}
+And this validation error (if any): {error}
+
+Calculated allocation category: {allocation_category}
+Budget allocation (USD per slot — keys: gpu, cpu, mobo, ram, psu, case):
+{rules_usd_s}
+Rule fractions (same keys):
+{rules_pct_s}
+
+Full parts catalog (JSON):
+{parts_s}
+
+Select one part from each category that:
+- Fits within the budget allocation for that slot
+- Matches the use case tier
+- Does NOT repeat any part that previously caused a validation error
+
+Return ONLY a JSON object with exactly this shape (no markdown, no commentary):
+{{"selected_ids": {{"cpu": "<id>", "gpu": "<id>", "motherboard": "<id>", "ram": "<id>", "psu": "<id>", "case": "<id>"}}}}
+Each value must be the "id" field of a part from the catalog above. All six keys are required."""
+
+
+def _find_part_by_id(parts_list: list[Any], part_id: str) -> dict[str, Any] | None:
+    for item in parts_list:
+        if isinstance(item, dict) and str(item.get("id")) == part_id:
+            return item
+    return None
+
+
+def parse_selected_ids(raw: str) -> dict[str, str]:
+    """Extract selected_ids from LLM output; returns slot -> part id."""
+    data = _parse_json_object_from_llm_text(raw)
+    if not data:
+        return {}
+    inner = data.get("selected_ids")
+    if not isinstance(inner, dict):
+        return {}
+    out: dict[str, str] = {}
+    for slot in RECOMMENDATION_SLOTS:
+        v = inner.get(slot)
+        if isinstance(v, str) and v.strip():
+            out[slot] = v.strip()
+    return out
+
+
+def build_dict_from_selected_ids(
+    selected_ids: dict[str, str],
+    parts_data: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    For each slot in RECOMMENDATION_SLOTS, resolve the chosen id to a full part dict.
+    If missing or unknown id, use the first available part in that category.
+    """
+    build: dict[str, Any] = {}
+    for slot in RECOMMENDATION_SLOTS:
+        key = SLOT_TO_PARTS_KEY[slot]
+        items = parts_data.get(key)
+        rows: list[Any] = items if isinstance(items, list) else []
+        want = selected_ids.get(slot, "")
+        part: dict[str, Any] | None = None
+        if want:
+            found = _find_part_by_id(rows, want)
+            if found is not None:
+                part = found
+        if part is None and rows:
+            first = rows[0]
+            part = first if isinstance(first, dict) else None
+        build[slot] = part if part is not None else {}
+    return build
+
+
 # -------------------------------------------------------------------------------------
 
 
 def run_build_assistant(user_input: str) -> str:
     """
-    Run analysis crew on user_input, parse JSON, apply budget allocation rules.
+    Run analysis crew, then recommendation crew (when an LLM is configured), map IDs to parts.
 
-    Returns a JSON string with analysis, allocation category, rule percentages, and USD splits.
+    Returns JSON with analysis, allocation, optional recommendation_raw, selected_ids, and build.
     """
     parts_data = load_parts()
-    _ = json.dumps(parts_data)  # reserved for recommendation / validation tasks
 
     raw_output = ""
+    recommendation_result = ""
     llm_ready = resolve_llm() is not None
     if llm_ready:
         analyst = analysis_agent()
@@ -255,16 +357,53 @@ def run_build_assistant(user_input: str) -> str:
 
     category, rules_pct, rules_usd = budget_rules_for_analysis(analysis)
 
-    payload = {
-        "status": "analysis_complete",
+    if llm_ready:
+        recommender = recommendation_agent()
+        recommendation_prompt = draft_recommendation_prompt(
+            analysis=analysis,
+            error="",
+            allocation_category=category,
+            rules_pct=rules_pct,
+            rules_usd=rules_usd,
+            parts_data=parts_data,
+        )
+        recommendation_task = Task(
+            description=recommendation_prompt,
+            expected_output='{"selected_ids": {"cpu": "...", "gpu": "...", ...}}',
+            agent=recommender,
+        )
+        rec_crew = Crew(
+            agents=[recommender],
+            tasks=[recommendation_task],
+            process=Process.sequential,
+            verbose=True,
+        )
+        try:
+            recommendation_result = str(rec_crew.kickoff())
+        except Exception as e:
+            recommendation_result = json.dumps({"_crew_error": str(e)})
+
+    selected_ids: dict[str, str] = {}
+    try:
+        selected_ids = parse_selected_ids(recommendation_result)
+    except (TypeError, ValueError, KeyError):
+        selected_ids = {}
+
+    build = build_dict_from_selected_ids(selected_ids, parts_data)
+
+    payload: dict[str, Any] = {
+        "status": "recommendation_complete",
         "analysis": analysis,
         "allocation_category": category,
         "allocation_rules": rules_pct,
         "allocation_usd": rules_usd,
         "parts_categories": {k: len(v) if isinstance(v, list) else 0 for k, v in parts_data.items()},
+        "selected_ids": selected_ids,
+        "build": build,
     }
     if os.environ.get("GESTALT_DEBUG"):
         payload["raw_llm_output"] = raw_output[:4000]
+        payload["recommendation_raw"] = recommendation_result[:4000]
 
     out = json.dumps(payload, indent=2)
     print(out)

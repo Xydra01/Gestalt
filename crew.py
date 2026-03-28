@@ -207,39 +207,37 @@ def run_build_assistant(user_input: str) -> str:
     parts_data = load_parts()
     _ = json.dumps(parts_data)  # reserved for recommendation / validation tasks
 
-    analyst = analysis_agent()
-    analysis_task = Task(
-        description=(
-            f"User request:\n{user_input}\n\n"
-            "Your output must be ONLY a single valid JSON object with exactly these keys:\n"
-            '  "budget" — number, total budget in USD (integer or float)\n'
-            '  "use_case" — string, one of: gaming, creative work, general productivity, development\n'
-            '  "priority" — string: max fps, max quality, or balanced\n'
-            '  "constraints" — array of strings (use [] if none)\n'
-            "Do not wrap in markdown. Do not add commentary. JSON only."
-        ),
-        expected_output=(
-            '{"budget": <number>, "use_case": "<string>", "priority": "<string>", '
-            '"constraints": [<strings>]}'
-        ),
-        agent=analyst,
-    )
-
-    crew = Crew(
-        agents=[analyst],
-        tasks=[analysis_task],
-        process=Process.sequential,
-        verbose=True,
-    )
-
     raw_output = ""
-    if resolve_llm() is not None:
+    llm_ready = resolve_llm() is not None
+    if llm_ready:
+        analyst = analysis_agent()
+        analysis_task = Task(
+            description=(
+                f"User request:\n{user_input}\n\n"
+                "Your output must be ONLY a single valid JSON object with exactly these keys:\n"
+                '  "budget" — number, total budget in USD (integer or float)\n'
+                '  "use_case" — string, one of: gaming, creative work, general productivity, development\n'
+                '  "priority" — string: max fps, max quality, or balanced\n'
+                '  "constraints" — array of strings (use [] if none)\n'
+                "Do not wrap in markdown. Do not add commentary. JSON only."
+            ),
+            expected_output=(
+                '{"budget": <number>, "use_case": "<string>", "priority": "<string>", '
+                '"constraints": [<strings>]}'
+            ),
+            agent=analyst,
+        )
+
+        crew = Crew(
+            agents=[analyst],
+            tasks=[analysis_task],
+            process=Process.sequential,
+            verbose=True,
+        )
         try:
             raw_output = str(crew.kickoff())
         except Exception as e:
             raw_output = json.dumps({"_crew_error": str(e)})
-    else:
-        raw_output = ""
 
     try:
         analysis = parse_analysis_result(raw_output)
@@ -250,7 +248,7 @@ def run_build_assistant(user_input: str) -> str:
     if hinted is not None:
         analysis["budget"] = hinted
 
-    if resolve_llm() is None:
+    if not llm_ready:
         inferred_uc = infer_use_case_from_prompt(user_input)
         if inferred_uc:
             analysis["use_case"] = inferred_uc

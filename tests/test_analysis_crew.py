@@ -20,6 +20,7 @@ from crew import (
     parse_selected_ids,
     resolve_allocation_category,
     run_build_assistant,
+    total_price_for_build,
 )
 
 
@@ -93,7 +94,7 @@ def test_run_build_assistant_mocked_llm(mock_kickoff: object) -> None:
                 "cpu": "amd-ryzen-5-7600",
                 "gpu": "nvidia-rtx-4060",
                 "motherboard": "gigabyte-b650m-ds3h",
-                "ram": "corsair-vengeance-lpx-16gb",
+                "ram": "corsair-vengeance-32gb",
                 "psu": "corsair-cx650m",
                 "case": "deepcool-cc560",
             }
@@ -106,15 +107,14 @@ def test_run_build_assistant_mocked_llm(mock_kickoff: object) -> None:
         {"GEMINI_API_KEY": "fake-gemini-key", "GOOGLE_API_KEY": "", "OPENAI_API_KEY": ""},
     ):
         out = json.loads(run_build_assistant("I want a $1500 editing rig"))
-    assert out["status"] == "recommendation_complete"
+    assert out["success"] is True
     assert out["analysis"]["budget"] == 1500
-    assert out["allocation_category"] == "creative"
-    assert out["allocation_rules"] == BUDGET_ALLOCATIONS["creative"]
-    assert out["allocation_usd"]["gpu"] == pytest.approx(1500 * 0.25)
-    assert "cpus" in out["parts_categories"]
     assert out["build"]["cpu"]["id"] == "amd-ryzen-5-7600"
     assert out["build"]["gpu"]["id"] == "nvidia-rtx-4060"
-    assert out["selected_ids"]["motherboard"] == "gigabyte-b650m-ds3h"
+    assert out["build"]["ram"]["id"] == "corsair-vengeance-32gb"
+    total = out["total"]
+    assert total == total_price_for_build(out["build"])
+    assert out["savings"] == pytest.approx(total * 0.35)
     assert mock_kickoff.call_count == 2
 
 
@@ -126,12 +126,92 @@ def test_run_build_assistant_no_key_uses_heuristics(mock_kickoff: object) -> Non
     ):
         out = json.loads(run_build_assistant("I want a $1500 editing rig"))
     mock_kickoff.assert_not_called()
-    assert out["status"] == "recommendation_complete"
+    assert out["success"] is True
     assert out["analysis"]["budget"] == 1500
     assert out["analysis"]["use_case"] == "creative work"
-    assert out["allocation_category"] == "creative"
-    assert out["selected_ids"] == {}
     assert out["build"]["cpu"].get("id") == "intel-core-i3-14100"
+    assert out["total"] == total_price_for_build(out["build"])
+    assert out["savings"] == pytest.approx(out["total"] * 0.35)
+
+
+@patch("crew.validate_build")
+@patch("crew.Crew.kickoff")
+def test_retry_loop_exhausted_returns_failure(
+    mock_kickoff: object,
+    mock_validate: object,
+) -> None:
+    """Three failed validations → final error payload (analysis + 3 recommendation kickoffs)."""
+
+    analysis_json = json.dumps(
+        {"budget": 1000, "use_case": "gaming", "priority": "balanced", "constraints": []}
+    )
+    rec = json.dumps(
+        {
+            "selected_ids": {
+                "cpu": "amd-ryzen-5-7600",
+                "gpu": "nvidia-rtx-4060",
+                "motherboard": "gigabyte-b650m-ds3h",
+                "ram": "corsair-vengeance-32gb",
+                "psu": "corsair-cx650m",
+                "case": "deepcool-cc560",
+            }
+        }
+    )
+    mock_kickoff.side_effect = [analysis_json, rec, rec, rec]
+    mock_validate.return_value = {
+        "passed": False,
+        "errors": [{"code": "TEST", "part": "gpu", "message": "x", "fix": "pick another gpu"}],
+    }
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "fake"}):
+        out = json.loads(run_build_assistant("gaming pc $1000"))
+    assert out["success"] is False
+    assert "3 attempts" in out["error"]
+    assert mock_kickoff.call_count == 4
+    assert mock_validate.call_count == 3
+
+
+@patch("crew.validate_build")
+@patch("crew.Crew.kickoff")
+def test_retry_loop_succeeds_on_second_attempt(
+    mock_kickoff: object,
+    mock_validate: object,
+) -> None:
+    mock_kickoff.side_effect = [
+        json.dumps({"budget": 1200, "use_case": "gaming", "priority": "balanced", "constraints": []}),
+        json.dumps(
+            {
+                "selected_ids": {
+                    "cpu": "amd-ryzen-5-7600",
+                    "gpu": "nvidia-rtx-4060",
+                    "motherboard": "gigabyte-b650m-ds3h",
+                    "ram": "corsair-vengeance-32gb",
+                    "psu": "corsair-cx650m",
+                    "case": "deepcool-cc560",
+                }
+            }
+        ),
+        json.dumps(
+            {
+                "selected_ids": {
+                    "cpu": "amd-ryzen-5-7600",
+                    "gpu": "nvidia-rtx-4060",
+                    "motherboard": "gigabyte-b650m-ds3h",
+                    "ram": "corsair-vengeance-32gb",
+                    "psu": "corsair-cx650m",
+                    "case": "deepcool-cc560",
+                }
+            }
+        ),
+    ]
+    mock_validate.side_effect = [
+        {"passed": False, "errors": [{"fix": "adjust parts"}]},
+        {"passed": True, "errors": []},
+    ]
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "fake"}):
+        out = json.loads(run_build_assistant("gaming pc"))
+    assert out["success"] is True
+    assert mock_kickoff.call_count == 3
+    assert mock_validate.call_count == 2
 
 
 def test_parse_selected_ids_fenced() -> None:
@@ -167,3 +247,13 @@ def test_draft_recommendation_prompt_contains_rules_and_catalog() -> None:
     assert "500" in text or "gaming" in text
     assert '"cpus"' in text or "cpus" in text
     assert "selected_ids" in text
+
+
+def test_draft_recommendation_prompt_includes_previous_validation_error() -> None:
+    analysis = {"budget": 400, "use_case": "gaming", "priority": "balanced", "constraints": []}
+    cat, pct, usd = budget_rules_for_analysis(analysis)
+    parts = {"cpus": [{"id": "x", "price": 100}]}
+    text = draft_recommendation_prompt(
+        analysis, "Use a shorter GPU.", cat, pct, usd, parts
+    )
+    assert "Previous validation error: Use a shorter GPU." in text

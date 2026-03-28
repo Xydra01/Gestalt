@@ -1,46 +1,914 @@
 {
-  "parts": [
+  "cpus": [
     {
-      "id": "secrets_vault",
-      "name": "Secrets vault",
-      "version": "1.0.0",
-      "requires": [],
-      "provides": ["api_credentials"]
+      "id": "intel-core-i3-14100",
+      "name": "Intel Core i3-14100",
+      "price": 110,
+      "socket": "LGA1700",
+      "tdp": 60,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "budget",
+      "use_case": ["general"]
     },
     {
-      "id": "llm_bridge",
-      "name": "LLM bridge",
-      "version": "1.0.0",
-      "requires": ["api_credentials"],
-      "provides": ["llm"]
+      "id": "amd-ryzen-5-7600",
+      "name": "AMD Ryzen 5 7600",
+      "price": 185,
+      "socket": "AM5",
+      "tdp": 65,
+      "ddr_support": "DDR5",
+      "tier": "budget",
+      "use_case": ["gaming"]
     },
     {
-      "id": "memory_index",
-      "name": "Memory index",
-      "version": "0.9.0",
-      "requires": ["llm"],
-      "provides": ["memory"]
+      "id": "intel-core-i5-13400f",
+      "name": "Intel Core i5-13400F",
+      "price": 190,
+      "socket": "LGA1700",
+      "tdp": 65,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "budget",
+      "use_case": ["gaming"]
     },
     {
-      "id": "ui_shell",
-      "name": "Web UI shell",
-      "version": "1.0.0",
-      "requires": [],
-      "provides": ["http_ui"]
+      "id": "amd-ryzen-5-8600g",
+      "name": "AMD Ryzen 5 8600G",
+      "price": 210,
+      "socket": "AM5",
+      "tdp": 65,
+      "ddr_support": "DDR5",
+      "tier": "budget",
+      "use_case": ["general"]
+    },
+    {
+      "id": "intel-core-i5-14600k",
+      "name": "Intel Core i5-14600K",
+      "price": 295,
+      "socket": "LGA1700",
+      "tdp": 125,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "amd-ryzen-7-7700x",
+      "name": "AMD Ryzen 7 7700X",
+      "price": 280,
+      "socket": "AM5",
+      "tdp": 105,
+      "ddr_support": "DDR5",
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "intel-core-i7-13700k",
+      "name": "Intel Core i7-13700K",
+      "price": 330,
+      "socket": "LGA1700",
+      "tdp": 125,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "mid",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-ryzen-7-7800x3d",
+      "name": "AMD Ryzen 7 7800X3D",
+      "price": 370,
+      "socket": "AM5",
+      "tdp": 120,
+      "ddr_support": "DDR5",
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "intel-core-i7-14700k",
+      "name": "Intel Core i7-14700K",
+      "price": 385,
+      "socket": "LGA1700",
+      "tdp": 125,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "mid",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-ryzen-9-7900x",
+      "name": "AMD Ryzen 9 7900X",
+      "price": 395,
+      "socket": "AM5",
+      "tdp": 170,
+      "ddr_support": "DDR5",
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "intel-core-i9-13900k",
+      "name": "Intel Core i9-13900K",
+      "price": 460,
+      "socket": "LGA1700",
+      "tdp": 150,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-ryzen-9-7950x",
+      "name": "AMD Ryzen 9 7950X",
+      "price": 510,
+      "socket": "AM5",
+      "tdp": 170,
+      "ddr_support": "DDR5",
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "intel-core-i9-14900k",
+      "name": "Intel Core i9-14900K",
+      "price": 530,
+      "socket": "LGA1700",
+      "tdp": 150,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-ryzen-9-7950x3d",
+      "name": "AMD Ryzen 9 7950X3D",
+      "price": 580,
+      "socket": "AM5",
+      "tdp": 120,
+      "ddr_support": "DDR5",
+      "tier": "high",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "intel-core-i5-12600k",
+      "name": "Intel Core i5-12600K",
+      "price": 165,
+      "socket": "LGA1700",
+      "tdp": 125,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "budget",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "amd-ryzen-5-7500f",
+      "name": "AMD Ryzen 5 7500F",
+      "price": 155,
+      "socket": "AM5",
+      "tdp": 65,
+      "ddr_support": "DDR5",
+      "tier": "budget",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "intel-core-i7-14700f",
+      "name": "Intel Core i7-14700F",
+      "price": 350,
+      "socket": "LGA1700",
+      "tdp": 65,
+      "ddr_support": "DDR4/DDR5",
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "amd-ryzen-7-8700g",
+      "name": "AMD Ryzen 7 8700G",
+      "price": 290,
+      "socket": "AM5",
+      "tdp": 65,
+      "ddr_support": "DDR5",
+      "tier": "mid",
+      "use_case": ["general"]
+    },
+    {
+      "id": "intel-core-i9-14900ks",
+      "name": "Intel Core i9-14900KS",
+      "price": 640,
+      "socket": "LGA1700",
+      "tdp": 150,
+      "ddr_support": "DDR5",
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-ryzen-9-7900",
+      "name": "AMD Ryzen 9 7900",
+      "price": 340,
+      "socket": "AM5",
+      "tdp": 65,
+      "ddr_support": "DDR5",
+      "tier": "mid",
+      "use_case": ["creative"]
     }
   ],
-  "workspaces": [
+  "gpus": [
     {
-      "name": "full_stack",
-      "part_ids": ["secrets_vault", "llm_bridge", "memory_index", "ui_shell"]
+      "id": "nvidia-rtx-4060",
+      "name": "NVIDIA RTX 4060",
+      "price": 285,
+      "tdp": 115,
+      "length_mm": 240,
+      "tier": "budget",
+      "use_case": ["gaming"]
     },
     {
-      "name": "ui_only",
-      "part_ids": ["ui_shell"]
+      "id": "amd-radeon-rx-7600",
+      "name": "AMD Radeon RX 7600",
+      "price": 250,
+      "tdp": 165,
+      "length_mm": 204,
+      "tier": "budget",
+      "use_case": ["gaming"]
     },
     {
-      "name": "bad_combo",
-      "part_ids": ["memory_index", "ui_shell"]
+      "id": "nvidia-rtx-4060-ti-8gb",
+      "name": "NVIDIA RTX 4060 Ti 8GB",
+      "price": 370,
+      "tdp": 160,
+      "length_mm": 244,
+      "tier": "budget",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "amd-radeon-rx-7600-xt",
+      "name": "AMD Radeon RX 7600 XT",
+      "price": 310,
+      "tdp": 190,
+      "length_mm": 267,
+      "tier": "budget",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "nvidia-rtx-4070",
+      "name": "NVIDIA RTX 4070",
+      "price": 520,
+      "tdp": 200,
+      "length_mm": 267,
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "amd-radeon-rx-7700-xt",
+      "name": "AMD Radeon RX 7700 XT",
+      "price": 380,
+      "tdp": 245,
+      "length_mm": 280,
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "nvidia-rtx-4070-super",
+      "name": "NVIDIA RTX 4070 Super",
+      "price": 585,
+      "tdp": 220,
+      "length_mm": 267,
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "amd-radeon-rx-7800-xt",
+      "name": "AMD Radeon RX 7800 XT",
+      "price": 470,
+      "tdp": 263,
+      "length_mm": 267,
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "nvidia-rtx-4070-ti-super",
+      "name": "NVIDIA RTX 4070 Ti Super",
+      "price": 780,
+      "tdp": 285,
+      "length_mm": 285,
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-radeon-rx-7900-gre",
+      "name": "AMD Radeon RX 7900 GRE",
+      "price": 530,
+      "tdp": 260,
+      "length_mm": 280,
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "nvidia-rtx-4080-super",
+      "name": "NVIDIA RTX 4080 Super",
+      "price": 970,
+      "tdp": 320,
+      "length_mm": 310,
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-radeon-rx-7900-xt",
+      "name": "AMD Radeon RX 7900 XT",
+      "price": 660,
+      "tdp": 315,
+      "length_mm": 276,
+      "tier": "high",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "nvidia-rtx-4090",
+      "name": "NVIDIA RTX 4090",
+      "price": 1650,
+      "tdp": 450,
+      "length_mm": 336,
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-radeon-rx-7900-xtx",
+      "name": "AMD Radeon RX 7900 XTX",
+      "price": 890,
+      "tdp": 355,
+      "length_mm": 287,
+      "tier": "high",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "nvidia-rtx-4060-ti-16gb",
+      "name": "NVIDIA RTX 4060 Ti 16GB",
+      "price": 430,
+      "tdp": 165,
+      "length_mm": 244,
+      "tier": "budget",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-radeon-rx-7600-oem",
+      "name": "AMD Radeon RX 7600 (OEM)",
+      "price": 230,
+      "tdp": 165,
+      "length_mm": 190,
+      "tier": "budget",
+      "use_case": ["general"]
+    },
+    {
+      "id": "nvidia-rtx-4070-ti",
+      "name": "NVIDIA RTX 4070 Ti",
+      "price": 700,
+      "tdp": 285,
+      "length_mm": 285,
+      "tier": "mid",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "amd-radeon-rx-7900-xt-white",
+      "name": "AMD Radeon RX 7900 XT (White)",
+      "price": 710,
+      "tdp": 315,
+      "length_mm": 300,
+      "tier": "high",
+      "use_case": ["gaming"]
+    },
+    {
+      "id": "nvidia-rtx-4080",
+      "name": "NVIDIA RTX 4080",
+      "price": 900,
+      "tdp": 320,
+      "length_mm": 310,
+      "tier": "high",
+      "use_case": ["creative"]
+    },
+    {
+      "id": "amd-radeon-rx-7700-xt-oc",
+      "name": "AMD Radeon RX 7700 XT (OC)",
+      "price": 410,
+      "tdp": 250,
+      "length_mm": 302,
+      "tier": "mid",
+      "use_case": ["gaming"]
+    }
+  ],
+  "motherboards": [
+    {
+      "id": "asrock-b660m-hdv",
+      "name": "ASRock B660M-HDV",
+      "price": 95,
+      "socket": "LGA1700",
+      "ddr_support": "DDR4"
+    },
+    {
+      "id": "gigabyte-b650m-ds3h",
+      "name": "Gigabyte B650M DS3H",
+      "price": 130,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "msi-pro-b760-p-wifi",
+      "name": "MSI PRO B760-P WIFI",
+      "price": 155,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asus-prime-b650-plus",
+      "name": "ASUS Prime B650-Plus",
+      "price": 165,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "gigabyte-z790-ud-ac",
+      "name": "Gigabyte Z790 UD AC",
+      "price": 185,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "msi-mag-b650-tomahawk-wifi",
+      "name": "MSI MAG B650 Tomahawk WiFi",
+      "price": 195,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asus-tuf-gaming-z790-plus-wifi",
+      "name": "ASUS TUF Gaming Z790-Plus WiFi",
+      "price": 225,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asrock-x670e-steel-legend",
+      "name": "ASRock X670E Steel Legend",
+      "price": 250,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "gigabyte-z790-aorus-elite-ax",
+      "name": "Gigabyte Z790 AORUS Elite AX",
+      "price": 240,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "msi-mpg-x670e-carbon-wifi",
+      "name": "MSI MPG X670E Carbon WiFi",
+      "price": 380,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asus-rog-strix-z790-e-gaming",
+      "name": "ASUS ROG Strix Z790-E Gaming",
+      "price": 410,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asrock-b650e-pg-riptide",
+      "name": "ASRock B650E PG Riptide",
+      "price": 185,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "msi-pro-z790-s-wifi",
+      "name": "MSI PRO Z790-S WiFi",
+      "price": 160,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asus-rog-crosshair-x670e-hero",
+      "name": "ASUS ROG Crosshair X670E Hero",
+      "price": 620,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "gigabyte-b760i-aorus-pro",
+      "name": "Gigabyte B760I AORUS Pro",
+      "price": 210,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "msi-meg-z790-ace",
+      "name": "MSI MEG Z790 Ace",
+      "price": 580,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asrock-a620m-hdv",
+      "name": "ASRock A620M-HDV",
+      "price": 85,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asus-prime-h610m-e",
+      "name": "ASUS Prime H610M-E",
+      "price": 75,
+      "socket": "LGA1700",
+      "ddr_support": "DDR4"
+    },
+    {
+      "id": "gigabyte-x670-aorus-elite-ax",
+      "name": "Gigabyte X670 AORUS Elite AX",
+      "price": 265,
+      "socket": "AM5",
+      "ddr_support": "DDR5"
+    },
+    {
+      "id": "asrock-z790-taichi-lite",
+      "name": "ASRock Z790 Taichi Lite",
+      "price": 290,
+      "socket": "LGA1700",
+      "ddr_support": "DDR5"
+    }
+  ],
+  "ram": [
+    {
+      "id": "corsair-vengeance-lpx-16gb",
+      "name": "Corsair Vengeance LPX 16GB",
+      "price": 42,
+      "ddr_gen": "DDR4",
+      "capacity": "16GB"
+    },
+    {
+      "id": "gskill-ripjaws-v-16gb",
+      "name": "G.Skill Ripjaws V 16GB",
+      "price": 38,
+      "ddr_gen": "DDR4",
+      "capacity": "16GB"
+    },
+    {
+      "id": "teamgroup-t-force-vulcan-32gb",
+      "name": "TeamGroup T-Force Vulcan 32GB",
+      "price": 62,
+      "ddr_gen": "DDR4",
+      "capacity": "32GB"
+    },
+    {
+      "id": "crucial-pro-32gb",
+      "name": "Crucial Pro 32GB",
+      "price": 65,
+      "ddr_gen": "DDR4",
+      "capacity": "32GB"
+    },
+    {
+      "id": "corsair-vengeance-32gb",
+      "name": "Corsair Vengeance 32GB",
+      "price": 105,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "gskill-flare-x5-32gb",
+      "name": "G.Skill Flare X5 32GB",
+      "price": 100,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "kingston-fury-beast-16gb",
+      "name": "Kingston FURY Beast 16GB",
+      "price": 60,
+      "ddr_gen": "DDR5",
+      "capacity": "16GB"
+    },
+    {
+      "id": "teamgroup-t-create-expert-32gb",
+      "name": "TeamGroup T-Create Expert 32GB",
+      "price": 95,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "gskill-trident-z5-rgb-32gb",
+      "name": "G.Skill Trident Z5 RGB 32GB",
+      "price": 125,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "corsair-dominator-titanium-32gb",
+      "name": "Corsair Dominator Titanium 32GB",
+      "price": 160,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "crucial-16gb-classic",
+      "name": "Crucial 16GB Classic",
+      "price": 50,
+      "ddr_gen": "DDR5",
+      "capacity": "16GB"
+    },
+    {
+      "id": "lexar-thor-32gb",
+      "name": "Lexar Thor 32GB",
+      "price": 88,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "patriot-viper-steel-16gb",
+      "name": "Patriot Viper Steel 16GB",
+      "price": 40,
+      "ddr_gen": "DDR4",
+      "capacity": "16GB"
+    },
+    {
+      "id": "silicon-power-value-32gb",
+      "name": "Silicon Power Value 32GB",
+      "price": 58,
+      "ddr_gen": "DDR4",
+      "capacity": "32GB"
+    },
+    {
+      "id": "adata-xpg-lancer-32gb",
+      "name": "ADATA XPG Lancer 32GB",
+      "price": 110,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "mushkin-redline-32gb",
+      "name": "Mushkin Redline 32GB",
+      "price": 108,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "gskill-ripjaws-s5-32gb",
+      "name": "G.Skill Ripjaws S5 32GB",
+      "price": 102,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "corsair-vengeance-rgb-32gb",
+      "name": "Corsair Vengeance RGB 32GB",
+      "price": 120,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    },
+    {
+      "id": "teamgroup-elite-16gb",
+      "name": "TeamGroup Elite 16GB",
+      "price": 48,
+      "ddr_gen": "DDR5",
+      "capacity": "16GB"
+    },
+    {
+      "id": "crucial-32gb-kit",
+      "name": "Crucial 32GB Kit",
+      "price": 90,
+      "ddr_gen": "DDR5",
+      "capacity": "32GB"
+    }
+  ],
+  "psus": [
+    {
+      "id": "evga-500-w1",
+      "name": "EVGA 500 W1",
+      "price": 45,
+      "wattage": 500
+    },
+    {
+      "id": "thermaltake-smart-600w",
+      "name": "Thermaltake Smart 600W",
+      "price": 52,
+      "wattage": 600
+    },
+    {
+      "id": "corsair-cx650m",
+      "name": "Corsair CX650M",
+      "price": 75,
+      "wattage": 650
+    },
+    {
+      "id": "cooler-master-mwe-gold-750",
+      "name": "Cooler Master MWE Gold 750",
+      "price": 95,
+      "wattage": 750
+    },
+    {
+      "id": "evga-supernova-750-gt",
+      "name": "EVGA SuperNOVA 750 GT",
+      "price": 105,
+      "wattage": 750
+    },
+    {
+      "id": "corsair-rm750e",
+      "name": "Corsair RM750e",
+      "price": 115,
+      "wattage": 750
+    },
+    {
+      "id": "seasonic-focus-gx-750",
+      "name": "Seasonic Focus GX-750",
+      "price": 125,
+      "wattage": 750
+    },
+    {
+      "id": "thermaltake-toughpower-gf3-850w",
+      "name": "Thermaltake Toughpower GF3 850W",
+      "price": 135,
+      "wattage": 850
+    },
+    {
+      "id": "corsair-rm850x",
+      "name": "Corsair RM850x",
+      "price": 145,
+      "wattage": 850
+    },
+    {
+      "id": "msi-mpg-a850g-pcie5",
+      "name": "MSI MPG A850G PCIE5",
+      "price": 140,
+      "wattage": 850
+    },
+    {
+      "id": "evga-supernova-1000-g7",
+      "name": "EVGA SuperNOVA 1000 G7",
+      "price": 180,
+      "wattage": 1000
+    },
+    {
+      "id": "corsair-rm1000x-shift",
+      "name": "Corsair RM1000x Shift",
+      "price": 200,
+      "wattage": 1000
+    },
+    {
+      "id": "seasonic-vertex-gx-1000",
+      "name": "Seasonic Vertex GX-1000",
+      "price": 220,
+      "wattage": 1000
+    },
+    {
+      "id": "be-quiet-straight-power-12-1000w",
+      "name": "Be Quiet! Straight Power 12 1000W",
+      "price": 195,
+      "wattage": 1000
+    },
+    {
+      "id": "phanteks-revolt-1200w",
+      "name": "Phanteks Revolt 1200W",
+      "price": 240,
+      "wattage": 1200
+    },
+    {
+      "id": "corsair-hx1500i",
+      "name": "Corsair HX1500i",
+      "price": 320,
+      "wattage": 1500
+    },
+    {
+      "id": "silverstone-sx750-sfx",
+      "name": "SilverStone SX750 SFX",
+      "price": 155,
+      "wattage": 750
+    },
+    {
+      "id": "cooler-master-v850-sfx",
+      "name": "Cooler Master V850 SFX",
+      "price": 165,
+      "wattage": 850
+    },
+    {
+      "id": "apevia-prestige-600w",
+      "name": "Apevia Prestige 600W",
+      "price": 55,
+      "wattage": 600
+    },
+    {
+      "id": "super-flower-leadex-vii-850w",
+      "name": "Super Flower Leadex VII 850W",
+      "price": 130,
+      "wattage": 850
+    }
+  ],
+  "cases": [
+    {
+      "id": "deepcool-cc560",
+      "name": "Deepcool CC560",
+      "price": 55,
+      "max_gpu_length_mm": 370
+    },
+    {
+      "id": "cooler-master-q300l",
+      "name": "Cooler Master Q300L",
+      "price": 45,
+      "max_gpu_length_mm": 360
+    },
+    {
+      "id": "nzxt-h5-flow",
+      "name": "NZXT H5 Flow",
+      "price": 85,
+      "max_gpu_length_mm": 365
+    },
+    {
+      "id": "corsair-4000d-airflow",
+      "name": "Corsair 4000D Airflow",
+      "price": 95,
+      "max_gpu_length_mm": 360
+    },
+    {
+      "id": "fractal-design-pop-air",
+      "name": "Fractal Design Pop Air",
+      "price": 80,
+      "max_gpu_length_mm": 405
+    },
+    {
+      "id": "phanteks-eclipse-g360a",
+      "name": "Phanteks Eclipse G360A",
+      "price": 90,
+      "max_gpu_length_mm": 400
+    },
+    {
+      "id": "lian-li-lancool-216",
+      "name": "Lian Li Lancool 216",
+      "price": 105,
+      "max_gpu_length_mm": 392
+    },
+    {
+      "id": "fractal-design-meshify-2",
+      "name": "Fractal Design Meshify 2",
+      "price": 150,
+      "max_gpu_length_mm": 450
+    },
+    {
+      "id": "nzxt-h9-flow",
+      "name": "NZXT H9 Flow",
+      "price": 160,
+      "max_gpu_length_mm": 435
+    },
+    {
+      "id": "lian-li-pc-o11-dynamic-evo",
+      "name": "Lian Li PC-O11 Dynamic EVO",
+      "price": 175,
+      "max_gpu_length_mm": 422
+    },
+    {
+      "id": "hyte-y60",
+      "name": "Hyte Y60",
+      "price": 190,
+      "max_gpu_length_mm": 375
+    },
+    {
+      "id": "be-quiet-pure-base-500dx",
+      "name": "Be Quiet! Pure Base 500DX",
+      "price": 110,
+      "max_gpu_length_mm": 369
+    },
+    {
+      "id": "fractal-design-north",
+      "name": "Fractal Design North",
+      "price": 140,
+      "max_gpu_length_mm": 355
+    },
+    {
+      "id": "corsair-5000d-airflow",
+      "name": "Corsair 5000D Airflow",
+      "price": 165,
+      "max_gpu_length_mm": 420
+    },
+    {
+      "id": "phanteks-nv7",
+      "name": "Phanteks NV7",
+      "price": 220,
+      "max_gpu_length_mm": 450
+    },
+    {
+      "id": "fractal-design-terra",
+      "name": "Fractal Design Terra",
+      "price": 180,
+      "max_gpu_length_mm": 322
+    },
+    {
+      "id": "cooler-master-masterbox-nr200p",
+      "name": "Cooler Master MasterBox NR200P",
+      "price": 90,
+      "max_gpu_length_mm": 330
+    },
+    {
+      "id": "ssupd-meshlicious",
+      "name": "SSUPD Meshlicious",
+      "price": 115,
+      "max_gpu_length_mm": 334
+    },
+    {
+      "id": "montech-air-903-max",
+      "name": "Montech AIR 903 MAX",
+      "price": 75,
+      "max_gpu_length_mm": 400
+    },
+    {
+      "id": "antec-performance-1-ft",
+      "name": "Antec Performance 1 FT",
+      "price": 155,
+      "max_gpu_length_mm": 400
     }
   ]
 }

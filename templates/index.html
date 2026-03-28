@@ -3,49 +3,111 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gestalt – PC Builder AI</title>
-  <style>
-    body { font-family: monospace; max-width: 800px; margin: auto; padding: 1rem; }
-    #log { background: #f0f0f0; padding: 10px; margin-top: 20px; white-space: pre-wrap; }
-    #result { margin-top: 16px; }
-    #result table { border-collapse: collapse; width: 100%; margin-top: 8px; }
-    #result th, #result td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
-    #result tfoot td { font-weight: bold; }
-    .error { color: #b00020; margin-top: 8px; }
-  </style>
+  <title>Gestalt — PC Builder AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,300..700;1,300..700&family=Syne:wght@400..800&family=Syne+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='hexcore.css') }}" />
 </head>
-<body>
-  <h1>⚡ Gestalt – PC Builder AI</h1>
-  <textarea id="prompt" rows="3" cols="60" placeholder="Describe your build...">Build me a gaming PC for $1000</textarea><br>
-  <button type="button" id="build-btn">Build My PC</button>
-  <div id="log"></div>
-  <div id="result"></div>
+<body class="hx-root hx-layout">
+  <header class="hx-hero">
+    <div class="hx-hero-bg" aria-hidden="true"></div>
+    <div class="hx-hero-inner">
+      <div class="hx-eyebrow">// GESTALT · PC BUILD CREW</div>
+      <h1 class="hx-display hx-h1">
+        <span class="hx-text-lavender hx-glow-lavender">GESTALT</span>
+        <br />
+        BUILD <span class="hx-text-muted" style="text-shadow: none">CHAT</span>
+      </h1>
+      <p class="hx-body-lg hx-text-muted" style="max-width: 520px; margin-top: 14px">
+        Describe your budget and use case. The crew returns a parts list and a short analysis — pastel-neon test UI using a HEXCORE-style token set.
+      </p>
+      <div class="hx-hero-pills">
+        <span class="hx-pill hx-pill-lav">Agents</span>
+        <span class="hx-pill hx-pill-mint">Mock /build</span>
+        <span class="hx-pill hx-pill-rose">Flask</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="hx-main hx-stack">
+    <section class="hx-panel hx-panel-glow" aria-labelledby="chat-heading">
+      <div class="hx-label" id="chat-heading" style="margin-bottom: 14px">Operator input</div>
+      <div class="hx-field">
+        <label class="hx-field-label" for="prompt">Build request</label>
+        <textarea id="prompt" class="hx-input" rows="4" placeholder="e.g. 1440p gaming, quiet ITX, $1,400 cap…">Build me a gaming PC for $1000</textarea>
+      </div>
+      <div class="hx-row" style="margin-top: 18px">
+        <button type="button" class="hx-btn hx-btn-primary" id="build-btn">Run build</button>
+        <button type="button" class="hx-btn hx-btn-ghost hx-btn-sm" id="clear-btn" title="Clear log and results">Clear</button>
+        <span class="hx-badge hx-badge-lavender" id="status-badge">Idle</span>
+      </div>
+    </section>
+
+    <section aria-labelledby="log-heading">
+      <div class="hx-label" id="log-heading" style="margin-bottom: 10px">Crew output stream</div>
+      <div class="hx-terminal">
+        <div class="hx-terminal-bar">
+          <div class="hx-terminal-dot"></div>
+          <div class="hx-terminal-dot"></div>
+          <div class="hx-terminal-dot"></div>
+          <span class="hx-terminal-title">gestalt — analysis.log</span>
+        </div>
+        <div class="hx-terminal-body hx-terminal-empty" id="log">Awaiting request…</div>
+      </div>
+    </section>
+
+    <section aria-labelledby="parts-heading">
+      <div class="hx-label" id="parts-heading" style="margin-bottom: 10px">Parts manifest</div>
+      <div id="result"></div>
+    </section>
+  </main>
+
   <script>
     function formatBuildTable(build) {
       if (!build || typeof build !== "object") return "";
       const rows = Object.entries(build).map(
         ([key, part]) =>
-          "<tr><td>" +
-          key +
-          "</td><td>" +
-          (part.name || "—") +
-          "</td><td>$" +
-          (part.price != null ? part.price : "—") +
+          "<tr><td><span class=\"hx-mono\">" +
+          escapeHtml(key) +
+          "</span></td><td>" +
+          escapeHtml(part.name || "—") +
+          "</td><td class=\"hx-text-mint\">$" +
+          (part.price != null ? escapeHtml(String(part.price)) : "—") +
           "</td></tr>"
       );
       return (
-        "<table><thead><tr><th>Part</th><th>Name</th><th>Price</th></tr></thead><tbody>" +
+        "<div class=\"hx-table-wrap hx-leaderboard\"><table class=\"hx-table\"><thead><tr><th>Part</th><th>Name</th><th>Price</th></tr></thead><tbody>" +
         rows.join("") +
-        "</tbody></table>"
+        "</tbody></table></div>"
       );
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function setBadge(text, variant) {
+      const el = document.getElementById("status-badge");
+      el.textContent = text;
+      el.className = "hx-badge";
+      if (variant === "mint") el.classList.add("hx-badge-mint");
+      else if (variant === "peach") el.classList.add("hx-badge-peach");
+      else el.classList.add("hx-badge-lavender");
     }
 
     async function runBuild() {
       const prompt = document.getElementById("prompt").value;
       const logEl = document.getElementById("log");
       const resultEl = document.getElementById("result");
-      logEl.textContent = "Processing...";
+      const btn = document.getElementById("build-btn");
+      logEl.classList.remove("hx-terminal-empty");
+      logEl.textContent = "Contacting /build…";
       resultEl.innerHTML = "";
+      setBadge("Working", "lavender");
+      btn.disabled = true;
       try {
         const response = await fetch("/build", {
           method: "POST",
@@ -56,35 +118,56 @@
         if (!response.ok) {
           logEl.textContent = "";
           resultEl.innerHTML =
-            '<p class="error">Request failed: ' +
-            (data.error || response.statusText) +
-            "</p>";
+            '<div class="hx-alert hx-alert-danger">Request failed: ' +
+            escapeHtml(data.error || response.statusText) +
+            "</div>";
+          setBadge("Error", "peach");
           return;
         }
-        logEl.textContent = data.analysis || "";
+        logEl.textContent = data.analysis || "[no analysis string]";
         if (data.success && data.build) {
           let html = formatBuildTable(data.build);
           if (data.total != null) {
             html +=
-              "<p><strong>Total:</strong> $" +
-              data.total +
+              '<div class="hx-total-bar"><span>Total: <span class="hx-text-lavender">$' +
+              escapeHtml(String(data.total)) +
+              "</span></span>" +
               (data.savings != null
-                ? " &nbsp;|&nbsp; <strong>Est. savings vs prebuilt:</strong> $" + data.savings
+                ? '<span class="hx-savings">Est. savings vs prebuilt: $' +
+                  escapeHtml(String(data.savings)) +
+                  "</span>"
                 : "") +
-              "</p>";
+              "</div>";
           }
           resultEl.innerHTML = html;
+          setBadge("Ready", "mint");
         } else {
           resultEl.innerHTML =
-            '<p class="error">' + (data.error || "Build could not be completed.") + "</p>";
+            '<div class="hx-alert hx-alert-danger">' +
+            escapeHtml(data.error || "Build could not be completed.") +
+            "</div>";
+          setBadge("Failed", "peach");
         }
       } catch (e) {
         logEl.textContent = "";
-        resultEl.innerHTML = '<p class="error">Network error: ' + e.message + "</p>";
+        resultEl.innerHTML =
+          '<div class="hx-alert hx-alert-danger">Network error: ' + escapeHtml(e.message) + "</div>";
+        setBadge("Offline", "peach");
+      } finally {
+        btn.disabled = false;
       }
     }
 
+    function clearUi() {
+      const logEl = document.getElementById("log");
+      logEl.textContent = "Awaiting request…";
+      logEl.classList.add("hx-terminal-empty");
+      document.getElementById("result").innerHTML = "";
+      setBadge("Idle", "lavender");
+    }
+
     document.getElementById("build-btn").addEventListener("click", runBuild);
+    document.getElementById("clear-btn").addEventListener("click", clearUi);
   </script>
 </body>
 </html>

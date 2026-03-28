@@ -51,7 +51,12 @@ Override the model for this check: **`GESTALT_GEMINI_SMOKE_MODEL`** (google.gena
 
 ## Pull requests
 
-[`gh pr create`](https://cli.github.com/manual/gh_pr_create) after pushing a branch; set **`GH_TOKEN`** (e.g. in `~/.bash_profile`) for non-interactive use.
+1. Install the [GitHub CLI](https://cli.github.com/): **`brew install gh`**, then **`gh auth login`** (or set **`GH_TOKEN`** in `~/.bash_profile` for non-interactive use).
+2. On macOS, this repo’s **`.vscode/settings.json`** prepends **`/opt/homebrew/bin`** to the integrated terminal **`PATH`** so `gh` is found after a **new terminal** tab.
+3. If `gh` is still missing (e.g. agent shells), run it via **`./scripts/gh`** from the repo root, which adds the same Homebrew paths.
+4. If **zsh** does not load your token, run PR commands with Bash: **`bash -lc 'cd …/Gestalt && ./scripts/gh pr create …'`**.
+
+See [gh pr create](https://cli.github.com/manual/gh_pr_create) after pushing a branch.
 
 ## License
 

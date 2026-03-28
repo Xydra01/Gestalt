@@ -43,7 +43,7 @@ With **`GEMINI_API_KEY`** set in `.env`, run a single minimal API call (skipped 
 uv run pytest tests/test_gemini_smoke.py -v
 ```
 
-Override the model for this check: **`GESTALT_GEMINI_SMOKE_MODEL`** (google.genai id, default **`gemini-2.0-flash`**). This is separate from **`GESTALT_LLM_MODEL`**, which uses CrewAI/LiteLLM naming.
+Override the model for this check: **`GESTALT_GEMINI_SMOKE_MODEL`** (google.genai id, default **`gemini-2.5-flash`**). This is separate from **`GESTALT_LLM_MODEL`**, which uses CrewAI/LiteLLM naming.
 
 ## Git remote (SSH)
 

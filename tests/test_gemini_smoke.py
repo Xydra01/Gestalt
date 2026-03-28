@@ -33,9 +33,9 @@ def _smoke_model_id() -> str:
     """
     Model id for google.genai (AI Studio) — not always the same string as CrewAI/LiteLLM.
 
-    Default `gemini-2.0-flash` tracks current AI Studio listings; override with GESTALT_GEMINI_SMOKE_MODEL.
+    Default `gemini-2.5-flash` (AI Studio); override with GESTALT_GEMINI_SMOKE_MODEL.
     """
-    return os.environ.get("GESTALT_GEMINI_SMOKE_MODEL", "gemini-2.0-flash")
+    return os.environ.get("GESTALT_GEMINI_SMOKE_MODEL", "gemini-2.5-flash")
 
 
 @pytest.mark.skipif(not _gemini_api_key(), reason="No GEMINI_API_KEY or GOOGLE_API_KEY (set in .env)")

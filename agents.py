@@ -45,7 +45,7 @@ Budget allocation rules:
 Return ONLY a JSON object with selected part IDs."""
 
 # Default Gemini model (override with GESTALT_LLM_MODEL). Prefix `gemini/` routes via CrewAI/LiteLLM.
-_DEFAULT_GEMINI_MODEL = "gemini/gemini-2.0-flash"
+_DEFAULT_GEMINI_MODEL = "gemini/gemini-2.5-flash"
 
 
 def resolve_llm() -> LLM | None:

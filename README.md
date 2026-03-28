@@ -42,6 +42,10 @@ uv run python crew.py
 git@github.com:Xydra01/Gestalt.git
 ```
 
+## Pull requests (GitHub CLI)
+
+From a feature branch, push then run [`gh pr create`](https://cli.github.com/manual/gh_pr_create). Non-interactive use expects **`GH_TOKEN`** in the environment (for example `export GH_TOKEN=...` in `~/.bash_profile` for login shells).
+
 ## Cursor guardrails
 
 See `.cursor/rules/` (`core`, `request`, `refresh`) and root `.cursorrules`.

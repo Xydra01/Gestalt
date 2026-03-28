@@ -5,6 +5,18 @@ alwaysApply: true
 
 # Pull requests
 
+## Shell: use Bash for `gh` (and similar CLIs)
+
+**zsh** in this environment may not load `GH_TOKEN` or other GitHub env vars. Always invoke the GitHub CLI (and any other tool that relies on Bash login/profile exports) via **Bash**:
+
+```bash
+bash -lc 'gh pr create --base main --head feature/your-branch --title "..." --body "..."'
+bash -lc 'gh pr list'
+bash -lc 'gh auth status'
+```
+
+Agents and scripts should wrap `gh …` in **`bash -lc '…'`** (single-quoted inner command) instead of calling `gh` directly from the default **zsh** session. Use the same pattern for any CLI that only picks up tokens or API keys from Bash login/profile files.
+
 Before `gh pr create` or finalizing a PR, follow **`.cursor/rules/git-workflow.mdc`**: **`git fetch origin`** and **`git pull origin main`** on the PR branch so `main` is integrated and conflicts are resolved locally.
 
 When creating or drafting a pull request for this repository (including via `gh pr create`):

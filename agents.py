@@ -28,7 +28,7 @@ Return ONLY a JSON object:
 
 User request: {user_input}"""
 
-_RECOMMENDATION_PROMPT = """You are a PC parts selector. You have access to parts.json.
+_RECOMMENDATION_PROMPT = """You are a PC parts selector. You have access to the parts catalog (injected in the task).
 Given this build analysis: {analysis}
 And this validation error (if any): {error}
 

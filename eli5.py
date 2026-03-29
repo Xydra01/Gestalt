@@ -37,13 +37,25 @@ def _sanitize_build_for_eli5(build: dict[str, Any]) -> dict[str, Any]:
 
 _ELI5_PROMPT = """You are explaining a PC build to someone who has never built a computer.
 
-Here is the parts list (JSON). The user's analysis context (budget, goals) may be included below it.
+You may receive trace context showing what the user asked for, how the system interpreted it,
+what conflicts appeared during compatibility checks, and how they were resolved.
+
+Use this context to explain the journey in plain English:
+- What the user wanted.
+- How the system interpreted that intent.
+- Any compatibility issues caught and fixed automatically (if retries happened).
+- Why the final validated build is the one being recommended.
+
+If trace context is missing or partial, gracefully fall back to explaining only the final parts list.
 
 PARTS JSON:
 {parts_json}
 
 ANALYSIS CONTEXT (may be empty):
 {analysis_json}
+
+TRACE CONTEXT (may be empty):
+{trace_json}
 
 Write a warm, encouraging explanation in plain English.
 
@@ -64,9 +76,78 @@ Do not output JSON or markdown code fences — plain text only.
 """
 
 
+def _extract_trace_context(
+    build: dict[str, Any],
+    analysis: dict[str, Any] | None,
+    agent_trace: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Derive a compact explanation-focused context from ``agent_trace``."""
+    trace = agent_trace if isinstance(agent_trace, list) else []
+    user_request = ""
+    analysis_from_trace: dict[str, Any] | None = None
+    retry_entries: list[dict[str, Any]] = []
+    validation_errors: list[dict[str, Any]] = []
+    unresolved_text_errors: list[str] = []
+    conflict_notes: list[str] = []
+
+    for entry in trace:
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("kind") or "")
+        if kind == "session_start" and not user_request:
+            req = entry.get("user_input")
+            if isinstance(req, str) and req.strip():
+                user_request = req.strip()
+        elif kind == "analysis_complete" and analysis_from_trace is None:
+            parsed = entry.get("parsed_analysis")
+            if isinstance(parsed, dict):
+                analysis_from_trace = parsed
+        elif kind == "retry_attempt":
+            retry_entries.append(entry)
+            prev_err = entry.get("prior_validation_error")
+            if isinstance(prev_err, str) and prev_err.strip():
+                unresolved_text_errors.append(prev_err.strip())
+                conflict_notes.append(prev_err.strip())
+        elif kind == "validation":
+            errs = entry.get("errors")
+            if isinstance(errs, list):
+                for err in errs:
+                    if isinstance(err, dict):
+                        validation_errors.append(err)
+                        fix = err.get("fix")
+                        msg = err.get("message")
+                        if isinstance(msg, str) and msg.strip() and isinstance(fix, str) and fix.strip():
+                            conflict_notes.append(f"{msg.strip()} -> {fix.strip()}")
+                        elif isinstance(fix, str) and fix.strip():
+                            conflict_notes.append(fix.strip())
+
+    typed_errors: list[str] = []
+    for err in validation_errors:
+        for key in ("code", "error_code", "type"):
+            code = err.get(key)
+            if isinstance(code, str) and code.strip():
+                typed_errors.append(code.strip())
+    for msg in unresolved_text_errors:
+        for token in msg.replace(",", " ").split():
+            if "_" in token and token.upper() == token and len(token) >= 4:
+                typed_errors.append(token)
+
+    retries_total = max(0, len(retry_entries) - 1)
+    return {
+        "user_request": user_request,
+        "structured_intent": analysis_from_trace or (analysis if isinstance(analysis, dict) else {}),
+        "attempt_count": len(retry_entries),
+        "retry_count": retries_total,
+        "typed_errors": sorted(set(typed_errors)),
+        "conflicts_resolved": sorted(set(x for x in conflict_notes if x)),
+        "final_validated_build": _sanitize_build_for_eli5(build),
+    }
+
+
 def generate_eli5_explanation(
     build: dict[str, Any],
     analysis: dict[str, Any] | None = None,
+    agent_trace: list[dict[str, Any]] | None = None,
 ) -> str:
     """
     Call Gemini to produce the full ELI5 narrative, or raise :exc:`Eli5UnavailableError`.
@@ -90,7 +171,8 @@ def generate_eli5_explanation(
     )
     parts_json = json.dumps(slim, indent=2)
     analysis_json = json.dumps(analysis or {}, indent=2)
-    prompt = _ELI5_PROMPT.format(parts_json=parts_json, analysis_json=analysis_json)
+    trace_json = json.dumps(_extract_trace_context(build, analysis, agent_trace), indent=2)
+    prompt = _ELI5_PROMPT.format(parts_json=parts_json, analysis_json=analysis_json, trace_json=trace_json)
 
     try:
         client = genai.Client(api_key=key)

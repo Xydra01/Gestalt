@@ -65,7 +65,7 @@ def test_rollup_live_includes_cross_retailer() -> None:
 
 def test_enrich_payload_overwrites_totals(monkeypatch) -> None:
     monkeypatch.setenv("RAINFOREST_API_KEY", "")
-    monkeypatch.setenv("SCRAPINGBEE_API_KEY", "")
+    monkeypatch.setenv("SERPAPI_API_KEY", "")
     payload = {
         "success": True,
         "build": {

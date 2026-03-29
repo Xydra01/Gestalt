@@ -1,10 +1,8 @@
 """
-eBay search result pricing via `ScrapingBee <https://www.scrapingbee.com/>`_.
+eBay live pricing via SerpApi.
 
-ScrapingBee handles all proxies and CAPTCHAs. We just call their API.
-
-Hackathon / demo: HTML layout can change; parsing targets current eBay classes
-(``s-item``, ``s-item__price``, etc.).
+Uses SerpApi's eBay engine (``engine=ebay``) and returns a normalized payload
+that `price_comparison.py` can consume without changes.
 """
 
 from __future__ import annotations
@@ -12,18 +10,19 @@ from __future__ import annotations
 import os
 import re
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote_plus, urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import quote_plus
 
-from bs4 import BeautifulSoup
+import requests
 
 # Environment variable for :func:`get_ebay_price`.
-SCRAPINGBEE_API_KEY_ENV = "SCRAPINGBEE_API_KEY"
-
-_SCRAPINGBEE_API_URL = "https://app.scrapingbee.com/api/v1/"
-_EBAY_SEARCH_BASE = "https://www.ebay.com/sch/i.html"
+SERPAPI_API_KEY_ENV = "SERPAPI_API_KEY"
+_SERPAPI_URL = "https://serpapi.com/search.json"
 _REQUEST_TIMEOUT_SEC = 3
+
+_EBAY_SEARCH_BASE = "https://www.ebay.com/sch/i.html"
+
+# Note returned by :func:`get_ebay_price` on success.
+EBAY_PRICE_NOTE = "Live eBay price"
 
 
 def ebay_search_url_for_query(query: str) -> str:
@@ -31,161 +30,122 @@ def ebay_search_url_for_query(query: str) -> str:
     nkw = quote_plus((query or "").strip())
     return f"{_EBAY_SEARCH_BASE}?_nkw={nkw}"
 
-# Note returned by :func:`get_ebay_price` on success.
-EBAY_PRICE_NOTE = "Live eBay price"
 
-
-def _parse_price_to_int(price_text: str) -> int | None:
-    """Turn a price string like ``'$1,234.56'`` or ``'$10.00 to $20'`` into a whole-dollar int."""
-    if not price_text or not price_text.strip():
+def _parse_int_price(raw: Any) -> int | None:
+    """Extract an integer dollar price from mixed SerpApi price values."""
+    if isinstance(raw, (int, float)):
+        return int(round(float(raw)))
+    if isinstance(raw, dict):
+        for key in ("value", "extracted_value", "amount", "raw"):
+            v = _parse_int_price(raw.get(key))
+            if v is not None:
+                return v
         return None
-    # Prefer the first money token (handles " $12.99 " and ranges by taking start).
-    chunk = price_text.replace(",", "").strip()
-    if " to " in chunk.lower():
-        chunk = re.split(r"\s+to\s+", chunk, maxsplit=1, flags=re.I)[0].strip()
-    match = re.search(r"(\d+(?:\.\d+)?)", chunk)
-    if not match:
+    if raw is None:
+        return None
+    text = str(raw)
+    m = re.search(r"[\d,]+(?:\.\d+)?", text)
+    if not m:
         return None
     try:
-        return int(round(float(match.group(1))))
+        return int(float(m.group(0).replace(",", "")))
     except (TypeError, ValueError):
         return None
 
 
-def _is_junk_placeholder(item: Any) -> bool:
-    """Skip the decorative first row (e.g. 'Shop on eBay')."""
-    title_el = item.select_one(".s-item__title")
-    if title_el:
-        t = title_el.get_text(strip=True).lower()
-        if "shop on ebay" in t or not t:
-            return True
-    return False
+def _candidate_prices(item: dict[str, Any]) -> tuple[int | None, int | None]:
+    """Return ``(buy_it_now_price, sold_or_fallback_price)`` for one result item."""
+    is_buy_now = bool(item.get("buy_it_now"))
 
+    primary = _parse_int_price(item.get("price"))
+    sold = None
+    for key in ("sold_price", "last_sold_price", "sold", "price_sold"):
+        sold = _parse_int_price(item.get(key))
+        if sold is not None:
+            break
 
-def _listing_is_buy_it_now_or_fixed(item: Any) -> bool:
-    """
-    Heuristic: prefer explicit Buy It Now; otherwise treat as fixed-price if
-    the block does not look like a pure auction line.
-    """
-    text = item.get_text(" ", strip=True).lower()
-    if "buy it now" in text:
-        return True
-    if "see price" in text:
-        return False
-    # Auction-style hints
-    if re.search(r"\b\d+\s+bids?\b", text):
-        return False
-    if "place bid" in text or "time left" in text:
-        return False
-    return True
-
-
-def _first_bin_or_fixed_price_int(soup: BeautifulSoup) -> int | None:
-    """
-    Walk search result rows; return the first suitable ``s-item__price`` as int.
-
-    Prioritizes listings that mention Buy It Now, then other non-auction fixed prices.
-    """
-    items = soup.select("li.s-item")
-    if not items:
-        return None
-
-    # Pass 1: explicit Buy It Now
-    for item in items:
-        if _is_junk_placeholder(item):
-            continue
-        price_el = item.select_one(".s-item__price")
-        if not price_el:
-            continue
-        blob = item.get_text(" ", strip=True).lower()
-        if "buy it now" not in blob:
-            continue
-        val = _parse_price_to_int(price_el.get_text())
-        if val is not None:
-            return val
-
-    # Pass 2: fixed-price style (no bidding cues)
-    for item in items:
-        if _is_junk_placeholder(item):
-            continue
-        if not _listing_is_buy_it_now_or_fixed(item):
-            continue
-        price_el = item.select_one(".s-item__price")
-        if not price_el:
-            continue
-        val = _parse_price_to_int(price_el.get_text())
-        if val is not None:
-            return val
-
-    return None
+    bin_price = primary if is_buy_now else None
+    sold_or_fallback = sold if sold is not None else primary
+    return bin_price, sold_or_fallback
 
 
 def scrape_ebay_price(query: str, api_key: str) -> int | None:
     """
-    Fetch eBay search HTML via ScrapingBee and return the first suitable BIN/fixed price.
+    Fetch eBay live price using SerpApi (eBay engine).
 
-    Calls ``GET https://app.scrapingbee.com/api/v1/`` with ``api_key``, ``url`` (eBay
-    search for ``query``), ``render_js=false``, and ``wait=0``. Uses a 3-second timeout.
+    Request:
+    - endpoint: ``https://serpapi.com/search.json``
+    - params: ``api_key``, ``engine=ebay``, ``_nkw=query``, ``no_cache=true``,
+      ``show_only=sold`` (market-value oriented demo mode)
+    - timeout: 3 seconds
 
-    Parses the HTML with BeautifulSoup: walks ``li.s-item`` rows, skips placeholders,
-    prefers listings that include Buy It Now, then other fixed-price-style rows, and
-    reads ``.s-item__price``.
+    Parsing:
+    - prefers the first ``buy_it_now`` result's price
+    - falls back to the first sold/regular price if no BIN result is present
 
     Returns:
-        First matching price as an integer (whole dollars), or ``None`` on failure.
-
-    Args:
-        query: Search string (e.g. PC part name).
-        api_key: ScrapingBee API key.
-
-    Note:
-        Any network error, HTTP error, timeout, parse failure, or missing price
-        yields ``None``.
+    - integer price on success, else ``None``
     """
-    if not (query and str(query).strip() and api_key and str(api_key).strip()):
+    q = (query or "").strip()
+    k = (api_key or "").strip()
+    if not q or not k:
         return None
-
-    ebay_url = ebay_search_url_for_query(query)
 
     params = {
-        "api_key": api_key.strip(),
-        "url": ebay_url,
-        "render_js": "false",
-        "wait": "0",
+        "api_key": k,
+        "engine": "ebay",
+        "_nkw": q,
+        "no_cache": "true",
+        "show_only": "sold",
     }
-    full_url = f"{_SCRAPINGBEE_API_URL}?{urlencode(params)}"
 
     try:
-        req = Request(full_url, headers={"Accept": "text/html,application/xhtml+xml"})
-        with urlopen(req, timeout=_REQUEST_TIMEOUT_SEC) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-    except (HTTPError, URLError, TimeoutError, OSError):
+        response = requests.get(
+            _SERPAPI_URL, params=params, timeout=_REQUEST_TIMEOUT_SEC
+        )
+        if response.status_code != 200:
+            return None
+
+        data = response.json()
+        if not isinstance(data, dict):
+            return None
+        organic_results = data.get("organic_results")
+        if not isinstance(organic_results, list) or not organic_results:
+            return None
+
+        # Pass 1: explicit Buy It Now
+        for item in organic_results:
+            if not isinstance(item, dict):
+                continue
+            buy_now_price, _ = _candidate_prices(item)
+            if isinstance(buy_now_price, int):
+                return buy_now_price
+
+        # Pass 2: first sold/regular fallback
+        for item in organic_results:
+            if not isinstance(item, dict):
+                continue
+            _, sold_or_fallback = _candidate_prices(item)
+            if isinstance(sold_or_fallback, int):
+                return sold_or_fallback
+
         return None
-
-    try:
-        soup = BeautifulSoup(body, "html.parser")
     except Exception:
         return None
 
-    return _first_bin_or_fixed_price_int(soup)
 
-
-def get_ebay_price(part_name: str, scrapingbee_key: str | None = None) -> dict[str, Any] | None:
+def get_ebay_price(part_name: str, api_key: str | None = None) -> dict[str, Any] | None:
     """
-    Look up a rough eBay price for a part name using ScrapingBee + eBay search.
+    Look up a rough eBay price for a part name using SerpApi + eBay search.
 
-    Uses ``scrapingbee_key`` when non-empty; otherwise ``SCRAPINGBEE_API_KEY`` from
-    the environment. If no key is available or scraping fails, returns ``None``.
-
-    Returns:
-        ``{"source": "ebay", "price": int, "note": "Live eBay price"}`` on success,
-        else ``None``.
+    Uses ``api_key`` when non-empty; otherwise reads ``SERPAPI_API_KEY``.
+    Returns ``None`` on any failure.
     """
-    api_key = (scrapingbee_key or "").strip() or os.environ.get(SCRAPINGBEE_API_KEY_ENV, "").strip()
-    if not api_key:
+    key = (api_key or "").strip() or os.environ.get(SERPAPI_API_KEY_ENV, "").strip()
+    if not key:
         return None
 
-    price = scrape_ebay_price(part_name, api_key)
+    price = scrape_ebay_price(part_name, key)
     if price is None:
         return None
 

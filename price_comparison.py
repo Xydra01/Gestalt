@@ -39,9 +39,9 @@ def _safe_amazon(part_name: str, amazon_key: str) -> dict[str, Any] | None:
         return None
 
 
-def _safe_ebay(part_name: str, scrapingbee_key: str) -> dict[str, Any] | None:
+def _safe_ebay(part_name: str, serpapi_key: str) -> dict[str, Any] | None:
     try:
-        return get_ebay_price(part_name, scrapingbee_key)
+        return get_ebay_price(part_name, serpapi_key)
     except Exception:
         return None
 
@@ -142,7 +142,7 @@ def _best_url(
 def get_all_prices(
     part_name: str,
     amazon_key: str,
-    scrapingbee_key: str,
+    serpapi_key: str,
     *,
     catalog_price: float | None = None,
 ) -> dict[str, Any]:
@@ -159,7 +159,7 @@ def get_all_prices(
     """
     name = (part_name or "").strip()
     ak = (amazon_key or "").strip()
-    sk = (scrapingbee_key or "").strip()
+    sk = (serpapi_key or "").strip()
 
     amz_raw = _safe_amazon(name, ak) if name else None
     eb_raw = _safe_ebay(name, sk) if name else None
@@ -215,7 +215,7 @@ def _catalog_price(part: dict[str, Any]) -> float | None:
 
 
 def enrich_build_with_prices(
-    build: dict[str, Any], amazon_key: str, scrapingbee_key: str
+    build: dict[str, Any], amazon_key: str, serpapi_key: str
 ) -> dict[str, Any]:
     """
     Attach comparison data to each component in a compatibility-style ``build`` dict.
@@ -229,7 +229,7 @@ def enrich_build_with_prices(
             cat = _catalog_price(val)
             merged = deepcopy(val)
             merged["price_comparison"] = get_all_prices(
-                q, amazon_key, scrapingbee_key, catalog_price=cat
+                q, amazon_key, serpapi_key, catalog_price=cat
             )
             out[key] = merged
         else:
@@ -300,9 +300,9 @@ def enrich_crew_payload_with_pricing(payload: dict[str, Any]) -> dict[str, Any]:
         return payload
 
     amazon_key = (os.environ.get("RAINFOREST_API_KEY") or "").strip()
-    scrapingbee_key = (os.environ.get("SCRAPINGBEE_API_KEY") or "").strip()
+    serpapi_key = (os.environ.get("SERPAPI_API_KEY") or "").strip()
 
-    enriched = enrich_build_with_prices(build, amazon_key, scrapingbee_key)
+    enriched = enrich_build_with_prices(build, amazon_key, serpapi_key)
     pricing = rollup_pricing(enriched)
 
     out = {**payload, "build": enriched, "pricing": pricing}

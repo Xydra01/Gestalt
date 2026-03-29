@@ -98,6 +98,16 @@
     </section>
   </main>
 
+  <footer class="hx-footer" aria-label="App metadata">
+    <div class="hx-footer-inner">
+      <span class="hx-footer-muted">Status:</span> <span id="hx-health">checking…</span>
+      <span class="hx-footer-sep">·</span>
+      <span class="hx-footer-muted">Version:</span> <span id="hx-version">—</span>
+      <span class="hx-footer-sep">·</span>
+      <span class="hx-footer-muted">Commit:</span> <span id="hx-commit">—</span>
+    </div>
+  </footer>
+
   <script>
     var gestaltOriginalPrompt = "";
     var lastBuildPayload = null;
@@ -228,11 +238,15 @@
     function formatBuildTable(build) {
       if (!build || typeof build !== "object") return "";
       const rows = Object.entries(build).map(function ([key, part]) {
+        const conf =
+          part && part.confidence && part.confidence.score != null
+            ? " · " + String(Math.round(Number(part.confidence.score) * 100)) + "% fit"
+            : "";
         return (
           "<tr><td><span class=\"hx-mono\">" +
           escapeHtml(key) +
           "</span></td><td>" +
-          escapeHtml(part.name || "—") +
+          escapeHtml((part.name || "—") + conf) +
           "</td><td class=\"hx-text-mint\">" +
           formatRowPrice(part) +
           "</td><td>" +
@@ -341,6 +355,34 @@
       const k = entry.kind;
       if (k === "session_start") {
         return "▸ Request: " + truncate(entry.user_input, 200);
+      }
+      if (k === "hard_constraints") {
+        return "▸ Hard constraints detected: " + escapeHtml(JSON.stringify(entry.constraints || {}));
+      }
+      if (k === "constraints_applied") {
+        const applied = Array.isArray(entry.applied) ? entry.applied : [];
+        if (!applied.length) return "";
+        const lines = applied.map(function (x) {
+          return (
+            String(x.slot) +
+            ": " +
+            String(x.replaced_id || "—") +
+            " → " +
+            String(x.picked_id || "—") +
+            (x.constraint ? " (match: " + String(x.constraint) + ")" : "")
+          );
+        });
+        return (
+          "▸ Adjusted parts to match your request (attempt " +
+          String(entry.attempt || "?") +
+          "):\n  " +
+          escapeHtml(lines.join("\n  "))
+        );
+      }
+      if (k === "assistant_note") {
+        const title = entry.title ? String(entry.title) : "Note";
+        const msg = entry.message ? String(entry.message) : "";
+        return "▸ " + escapeHtml(title) + (msg ? "\n  " + escapeHtml(msg) : "");
       }
       if (k === "phase" && entry.phase) {
         var phaseName = String(entry.phase);
@@ -657,6 +699,25 @@
 
     document.getElementById("build-btn").addEventListener("click", runBuild);
     document.getElementById("clear-btn").addEventListener("click", clearUi);
+
+    (function initHealthFooter() {
+      var healthEl = document.getElementById("hx-health");
+      var verEl = document.getElementById("hx-version");
+      var shaEl = document.getElementById("hx-commit");
+      if (!healthEl || !verEl || !shaEl) return;
+      fetch("/healthz")
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          healthEl.textContent = j && j.status ? String(j.status) : "unknown";
+          verEl.textContent = j && j.version ? String(j.version) : "dev";
+          shaEl.textContent = j && j.commit ? String(j.commit).slice(0, 12) : "local";
+        })
+        .catch(function () {
+          healthEl.textContent = "unknown";
+          verEl.textContent = "dev";
+          shaEl.textContent = "local";
+        });
+    })();
 
     (function initHeroScrollState() {
       // Less dynamic: never collapse/expand the header (avoids any layout shift).

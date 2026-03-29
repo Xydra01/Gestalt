@@ -84,3 +84,42 @@ def test_enrich_payload_overwrites_totals(monkeypatch) -> None:
     assert out["total"] == out["pricing"]["total_parts"]
     assert out["savings"] == out["pricing"]["estimated_savings_total"]
     assert "price_comparison" in out["build"]["cpu"]
+
+
+def test_enrich_payload_calls_amazon_and_ebay_live_sources(monkeypatch) -> None:
+    """
+    Ensure the enrichment path attempts the live APIs when keys exist.
+
+    This test is mocked (no network): we assert the integration points are called and
+    the build gains live-looking comparison slots.
+    """
+    monkeypatch.setenv("RAINFOREST_API_KEY", "rk")
+    monkeypatch.setenv("SCRAPINGBEE_API_KEY", "sk")
+    payload = {
+        "success": True,
+        "build": {
+            "cpu": {"name": "CPU", "price": 100},
+            "gpu": {"name": "GPU", "price": 200},
+            "motherboard": {"name": "MB", "price": 0},
+            "ram": {"name": "RAM", "price": 0},
+            "psu": {"name": "PSU", "price": 0},
+            "case": {"name": "CASE", "price": 0},
+        },
+    }
+
+    from price_comparison import get_amazon_price, get_ebay_price
+
+    monkeypatch.setattr(
+        "price_comparison.get_amazon_price",
+        lambda name, key=None: {"source": "amazon", "price": 111, "title": "t", "url": "u"},
+    )
+    monkeypatch.setattr(
+        "price_comparison.get_ebay_price",
+        lambda name, key=None: {"source": "ebay", "price": 222, "note": "n", "url": "e"},
+    )
+
+    out = enrich_crew_payload_with_pricing(payload)
+    comp = out["build"]["cpu"]["price_comparison"]
+    assert comp["amazon"]["available"] is True
+    assert comp["ebay"]["available"] is True
+    assert comp["price_basis"] == "live"

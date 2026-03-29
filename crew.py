@@ -227,6 +227,204 @@ SLOT_TO_PARTS_KEY: dict[str, str] = {
 }
 
 
+def extract_hard_part_constraints(user_input: str) -> dict[str, str]:
+    """
+    Extract "hard" constraints from the raw user prompt, keyed by build slot.
+
+    This is intentionally heuristic, but it is deterministic. The goal is to prevent
+    the selector from drifting away from explicit user requests like "RTX 4070" or
+    "Ryzen 5 7600X".
+    """
+    t = (user_input or "").strip()
+    if not t:
+        return {}
+    s = t.lower()
+    out: dict[str, str] = {}
+
+    # GPU: RTX / RX lines
+    m = re.search(r"\b(rtx)\s*([0-9]{3,4})\b", s)
+    if m:
+        out["gpu"] = f"{m.group(1)} {m.group(2)}"
+    m = re.search(r"\b(rx)\s*([0-9]{3,4})\b", s)
+    if m:
+        out["gpu"] = f"{m.group(1)} {m.group(2)}"
+
+    # CPU: Ryzen family + model, and Intel i5/i7/i9 patterns
+    m = re.search(r"\b(ryzen)\s*([3579])\s*([0-9]{4,5}[a-z]?)\b", s)
+    if m:
+        out["cpu"] = f"{m.group(1)} {m.group(2)} {m.group(3)}"
+    m = re.search(r"\b(i[3579])\s*[- ]?\s*([0-9]{4,5}[a-z]?)\b", s)
+    if m:
+        out["cpu"] = f"{m.group(1)} {m.group(2)}"
+
+    # Motherboard: chipsets that appear in typical prompts (B650 / Z790 / B550 etc)
+    m = re.search(r"\b([abxz])\s*([0-9]{3})\b", s)
+    if m:
+        out["motherboard"] = f"{m.group(1)}{m.group(2)}"
+
+    # RAM: 16GB/32GB/64GB
+    m = re.search(r"\b(16|32|64)\s*gb\b", s)
+    if m:
+        out["ram"] = f"{m.group(1)}gb"
+
+    # PSU: wattage
+    m = re.search(r"\b([5-9][0-9]{2,3})\s*w\b", s)
+    if m:
+        out["psu"] = f"{m.group(1)}w"
+
+    # Case: form factors / size adjectives
+    if "itx" in s:
+        out["case"] = "itx"
+    elif "mid" in s and "tower" in s:
+        out["case"] = "mid tower"
+    elif "full" in s and "tower" in s:
+        out["case"] = "full tower"
+
+    return out
+
+
+def _tokenize_constraint(q: str) -> list[str]:
+    return [x for x in re.split(r"[^a-z0-9]+", (q or "").lower()) if x]
+
+
+def _best_match_part_for_query(rows: list[Any], query: str) -> dict[str, Any] | None:
+    """
+    Pick the best matching catalog part for the given free-text query.
+
+    Strategy: score each row by token containment in its name/title/model/id.
+    """
+    toks = _tokenize_constraint(query)
+    if not toks:
+        return None
+    best: tuple[int, dict[str, Any]] | None = None
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        blob = " ".join(
+            str(item.get(k, "")).lower()
+            for k in ("name", "title", "model", "id", "chipset", "series")
+        )
+        score = sum(1 for tok in toks if tok in blob)
+        if score <= 0:
+            continue
+        if best is None or score > best[0]:
+            best = (score, item)
+    return best[1] if best is not None else None
+
+
+def apply_hard_constraints_to_build(
+    build: dict[str, Any], parts_data: dict[str, Any], hard: dict[str, str]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """
+    Apply extracted hard constraints by overriding selected parts when a strong match exists.
+
+    Returns the updated build and a list of applied overrides for trace/debug.
+    """
+    if not hard:
+        return build, []
+    out = {**build}
+    applied: list[dict[str, Any]] = []
+    # Apply in a compatibility-aware order so later overrides can respect earlier ones.
+    order = ["cpu", "gpu", "motherboard", "ram", "psu", "case"]
+    for slot in order:
+        if slot not in hard:
+            continue
+        q = hard.get(slot, "")
+        if slot not in RECOMMENDATION_SLOTS:
+            continue
+        key = SLOT_TO_PARTS_KEY[slot]
+        rows: list[Any] = parts_data.get(key) if isinstance(parts_data.get(key), list) else []
+
+        # Special-case RAM: if the motherboard has an explicit DDR support, only consider matching RAM.
+        if slot == "ram":
+            mobo = out.get("motherboard")
+            if isinstance(mobo, dict):
+                want_ddr = mobo.get("ddr_support")
+                if isinstance(want_ddr, str) and want_ddr.strip():
+                    filtered: list[Any] = []
+                    for r in rows:
+                        if not isinstance(r, dict):
+                            continue
+                        gen = r.get("ddr_gen")
+                        if want_ddr == "DDR4/DDR5":
+                            if gen in ("DDR4", "DDR5"):
+                                filtered.append(r)
+                        elif gen == want_ddr:
+                            filtered.append(r)
+                    if filtered:
+                        rows = filtered
+
+        match = _best_match_part_for_query(rows, q)
+        if match is None:
+            continue
+        prev = out.get(slot) if isinstance(out.get(slot), dict) else {}
+        if isinstance(prev, dict) and prev.get("id") == match.get("id"):
+            continue
+        out[slot] = match
+        applied.append(
+            {
+                "slot": slot,
+                "constraint": q,
+                "picked_id": match.get("id"),
+                "picked_name": match.get("name") or match.get("title") or match.get("model"),
+                "replaced_id": prev.get("id") if isinstance(prev, dict) else None,
+            }
+        )
+    return out, applied
+
+
+def add_confidence_scores(
+    build: dict[str, Any],
+    *,
+    hard: dict[str, str],
+    rules_usd: dict[str, float],
+) -> dict[str, Any]:
+    """
+    Attach a simple, explainable confidence score per part.
+
+    Score is 0..1 based on:
+    - matches explicit hard constraint for that slot
+    - stays within the per-slot budget allocation (soft)
+    """
+    out: dict[str, Any] = {**build}
+    for slot in RECOMMENDATION_SLOTS:
+        part = out.get(slot)
+        if not isinstance(part, dict):
+            continue
+        score = 0.6
+        reasons: list[str] = []
+
+        # Constraint match boosts confidence
+        cq = hard.get(slot)
+        if cq:
+            toks = _tokenize_constraint(cq)
+            blob = " ".join(str(part.get(k, "")).lower() for k in ("name", "title", "model", "id"))
+            hit = sum(1 for tok in toks if tok in blob)
+            if hit >= max(1, len(toks) // 2):
+                score += 0.3
+                reasons.append(f"Matches your request ({cq}).")
+            else:
+                score -= 0.25
+                reasons.append(f"Does not closely match requested constraint ({cq}).")
+
+        # Budget alignment (soft): within 15% of slot allocation is "good"
+        alloc = rules_usd.get("mobo" if slot == "motherboard" else slot)
+        price = part.get("price")
+        if isinstance(alloc, (int, float)) and isinstance(price, (int, float)) and alloc > 0:
+            if float(price) <= float(alloc) * 1.15:
+                score += 0.1
+                reasons.append("Fits the budget allocation for this slot.")
+            else:
+                score -= 0.1
+                reasons.append("A bit over the budget allocation for this slot.")
+
+        score = max(0.0, min(1.0, round(score, 2)))
+        merged = {**part}
+        merged["confidence"] = {"score": score, "reasons": reasons}
+        out[slot] = merged
+    return out
+
+
 def draft_recommendation_prompt(
     analysis: dict[str, Any],
     error: str | None,
@@ -455,6 +653,10 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
     _emit_trace_step(agent_trace)
 
     category, rules_pct, rules_usd = budget_rules_for_analysis(analysis)
+    hard = extract_hard_part_constraints(user_input)
+    if hard:
+        agent_trace.append({"kind": "hard_constraints", "constraints": hard})
+        _emit_trace_step(agent_trace)
 
     error: str | None = None
     max_retries = 3
@@ -527,6 +729,10 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
             selected_ids = {}
 
         build = build_dict_from_selected_ids(selected_ids, parts_data)
+        build, applied = apply_hard_constraints_to_build(build, parts_data, hard)
+        if applied:
+            agent_trace.append({"kind": "constraints_applied", "applied": applied, "attempt": attempt + 1})
+            _emit_trace_step(agent_trace)
         validation = validate_build(build)
 
         agent_trace.append(
@@ -540,6 +746,26 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
         _emit_trace_step(agent_trace)
 
         if validation.get("passed") is True:
+            build = add_confidence_scores(build, hard=hard, rules_usd=rules_usd)
+            agent_trace.append({"kind": "confidence_scored", "attempt": attempt + 1})
+            _emit_trace_step(agent_trace)
+            if applied:
+                agent_trace.append(
+                    {
+                        "kind": "assistant_note",
+                        "title": "We honored your constraints",
+                        "message": "I swapped a few parts to match what you explicitly asked for, while keeping everything compatible.",
+                    }
+                )
+                _emit_trace_step(agent_trace)
+            agent_trace.append(
+                {
+                    "kind": "assistant_note",
+                    "title": "Want to tweak anything?",
+                    "message": "If you want, ask for quieter, smaller, more RGB, or a different GPU/CPU and I’ll re-balance the build.",
+                }
+            )
+            _emit_trace_step(agent_trace)
             total = total_price_for_build(build)
             savings = round(total * 0.35, 2)
             payload: dict[str, Any] = {

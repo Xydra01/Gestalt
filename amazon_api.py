@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus, urlencode
@@ -16,9 +17,11 @@ from urllib.request import Request, urlopen
 
 # Environment variable used by :func:`get_amazon_price` when no key is passed in code.
 RAINFOREST_API_KEY_ENV = "RAINFOREST_API_KEY"
+SERPER_API_KEY_ENV = "SERPER_API_KEY"
 
 _RAINFOREST_REQUEST_URL = "https://api.rainforestapi.com/request"
 _REQUEST_TIMEOUT_SEC = 3
+_SERPER_SEARCH_URL = "https://google.serper.dev/search"
 
 
 def _amazon_search_fallback_url(query: str) -> str:
@@ -140,12 +143,97 @@ def get_amazon_price(part_name: str, amazon_key: str | None = None) -> dict[str,
         else ``None``.
     """
     api_key = (amazon_key or "").strip() or os.environ.get(RAINFOREST_API_KEY_ENV, "").strip()
-    if not api_key:
+    if api_key:
+        out = search_amazon(part_name, api_key)
+        if out is None:
+            return None
+        price, title, url = out
+        return {"source": "amazon", "price": price, "title": title, "url": url}
+
+    # Fallback for demos: if Rainforest isn't configured, try Serper (Google Search API)
+    # to find an Amazon result and a rough price from the snippet when present.
+    serper_key = os.environ.get(SERPER_API_KEY_ENV, "").strip()
+    if not serper_key:
         return None
 
-    out = search_amazon(part_name, api_key)
-    if out is None:
+    out2 = search_amazon_via_serper(part_name, serper_key)
+    if out2 is None:
         return None
-
-    price, title, url = out
+    price, title, url = out2
     return {"source": "amazon", "price": price, "title": title, "url": url}
+
+
+def _extract_price_from_snippet(text: str) -> int | None:
+    if not text or not isinstance(text, str):
+        return None
+    # Common snippet patterns: "$129.99", "$129", "from $129.99"
+    m = re.search(r"\$\s*([0-9][0-9,]*)(?:\.(\d{1,2}))?", text)
+    if not m:
+        return None
+    whole = m.group(1).replace(",", "")
+    frac = m.group(2) or "0"
+    try:
+        return int(round(float(f"{whole}.{frac}")))
+    except ValueError:
+        return None
+
+
+def search_amazon_via_serper(query: str, api_key: str) -> tuple[int, str, str] | None:
+    """
+    Fallback Amazon lookup using Serper (Google Search API).
+
+    This is less reliable than Rainforest (snippets may omit prices), but it provides:
+    - a likely Amazon URL
+    - a rough whole-dollar price when the snippet contains one
+    """
+    if not (query and str(query).strip() and api_key and str(api_key).strip()):
+        return None
+
+    payload = json.dumps(
+        {
+            "q": f"{query.strip()} site:amazon.com",
+            "num": 5,
+        }
+    ).encode("utf-8")
+
+    try:
+        req = Request(
+            _SERPER_SEARCH_URL,
+            data=payload,
+            headers={
+                "X-API-KEY": api_key.strip(),
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        with urlopen(req, timeout=_REQUEST_TIMEOUT_SEC) as resp:
+            body = resp.read().decode("utf-8")
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return None
+
+    try:
+        data: Any = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    organic = data.get("organic")
+    if not isinstance(organic, list) or not organic:
+        return None
+
+    for item in organic:
+        if not isinstance(item, dict):
+            continue
+        link = item.get("link")
+        title = item.get("title")
+        snippet = item.get("snippet") or ""
+        if not (isinstance(link, str) and link.startswith("http") and "amazon." in link):
+            continue
+        if not isinstance(title, str) or not title.strip():
+            continue
+        price = _extract_price_from_snippet(snippet) or 0
+        return (int(price), title.strip(), link.strip())
+
+    return None

@@ -89,20 +89,42 @@ Optional: commit **`render.yaml`** and use Render **Blueprint** to provision the
 
 Copy **`.env.example`** → **`.env`** (never commit `.env`). Important keys:
 
-- **`GEMINI_API_KEY`** or **`GOOGLE_API_KEY`** — CrewAI agents and ELI5 (`eli5.py`).
-- **`GESTALT_LLM_MODEL`** — optional CrewAI / LiteLLM model id (e.g. `gemini/gemini-2.5-flash`).
-- **`GESTALT_ELI5_MODEL`**, **`GESTALT_GEMINI_SMOKE_MODEL`** — optional native `google.genai` model ids for ELI5 and smoke tests.
-- **`RAINFOREST_API_KEY`**, **`SCRAPINGBEE_API_KEY`** — optional live Amazon / eBay pricing.
-- **`GESTALT_PC_BUILD_SERVICE_RATE`** — optional fraction for “build service fee avoided” in savings rollup.
+### Environment matrix (required vs optional)
+
+| Variable | Required | Purpose | If missing |
+|---|---:|---|---|
+| `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Recommended | Enables CrewAI LLM path and ELI5 generation | Crew/intake fall back to heuristic paths; `/explain` returns 503 |
+| `GESTALT_LLM_MODEL` | Optional | Override CrewAI/LiteLLM model id | Defaults to a Gemini model |
+| `GESTALT_ELI5_MODEL` | Optional | Override `google.genai` model id for ELI5 | Falls back to `GESTALT_GEMINI_SMOKE_MODEL` or default |
+| `GESTALT_GEMINI_SMOKE_MODEL` | Optional | Model used by `tests/test_gemini_smoke.py` | Defaults to `gemini-2.5-flash` |
+| `RAINFOREST_API_KEY` | Optional | Amazon live price lookup | Pricing uses catalog/list price fallback |
+| `SCRAPINGBEE_API_KEY` | Optional | eBay live price lookup | Pricing uses catalog/list price fallback |
+| `GESTALT_PC_BUILD_SERVICE_RATE` | Optional | Savings rollup rate for “build service fee avoided” | Defaults to 0.12 |
+| `PORT` | Optional | Bind port (hosts like Render inject this) | Defaults to 5000 |
+| `HOST` | Optional | Bind host | Defaults to 127.0.0.1 |
+| `FLASK_DEBUG` | Optional | Local debug mode (`1`/`true`) | Off by default |
+| `GESTALT_VERSION` | Optional | Shown in `/healthz` + UI footer | UI shows `dev` |
+| `GIT_SHA` | Optional | Shown in `/healthz` + UI footer | UI shows `local` |
+
+### Degraded-mode behavior (when keys are missing)
+
+- **No LLM key** (`GEMINI_API_KEY`/`GOOGLE_API_KEY` missing):\n  - Intake and build pipeline use heuristic fallbacks.\n  - `/explain` (ELI5) returns **503** with a clear message.\n- **No pricing keys** (`RAINFOREST_API_KEY`/`SCRAPINGBEE_API_KEY` missing):\n  - Live retailer pricing is skipped.\n  - The UI displays catalog/list pricing from `parts.json` and still shows rollups.
 
 ## HTTP API (for the UI and tests)
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/` | Main UI |
+| `GET` | `/healthz` | Health + optional metadata (`version`, `commit`) for deploy checks and judge scans. |
+| `GET` | `/version` | Runtime metadata (python version, uptime, optional version/commit). |
+| `GET` | `/metrics` | Minimal Prometheus-style counters and last build duration gauge (in-memory). |
 | `POST` | `/build` | JSON body: `prompt`, optional `original_prompt` + `clarification_answers`. Returns JSON build result or clarification payload. |
 | `POST` | `/build/stream` | Same body; **SSE** (`text/event-stream`) using proper SSE fields: `event: trace|clarify|complete|error` with JSON in `data:`. Includes keepalive comment frames (`: keepalive`). |
 | `POST` | `/explain` | JSON: `build` (object), optional `analysis`. Returns `{ "eli5": "..." }` or error (503 if no API key for ELI5). |
+
+### Request validation
+
+Requests to `/build`, `/build/stream`, and `/explain` are validated with **Pydantic** at the HTTP boundary (see `schemas.py`). Unknown fields are ignored; invalid shapes return **400** with a `details` list.
 
 ## Testing
 
@@ -130,6 +152,16 @@ uv run pytest tests/test_gemini_smoke.py -v
 ```
 
 Mark **`integration`** is reserved for tests that need real API keys or network (see `pyproject.toml` markers).
+
+## SSE smoke check (black-box)
+
+If the server is running locally on port 5000, you can quickly verify SSE formatting end-to-end:
+
+```bash
+python3 scripts/sse_smoke.py
+# or with a different base URL:
+python3 scripts/sse_smoke.py http://127.0.0.1:5000
+```
 
 ## Git remote (SSH)
 

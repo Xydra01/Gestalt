@@ -9,6 +9,7 @@ dependencies = [
     "crewai[tools,google-genai]>=0.100.0",
     "flask>=3.0.0",
     "gunicorn>=22.0.0",
+    "pydantic>=2.7.0",
     "python-dotenv>=1.0.0",
     "requests>=2.32.0",
 ]

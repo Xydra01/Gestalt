@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hover.css@2.3.2/css/hover-min.css" crossorigin="anonymous" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@animxyz/core@0.6.6/dist/animxyz.min.css" crossorigin="anonymous" />
   <link rel="stylesheet" href="https://unpkg.com/magic.css@1.4.8/dist/magic.min.css" crossorigin="anonymous" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='hexcore.css') }}" />
 </head>
 <body class="hx-root hx-layout hx-motion hx-booting">
@@ -237,11 +238,15 @@
     function formatBuildTable(build) {
       if (!build || typeof build !== "object") return "";
       const rows = Object.entries(build).map(function ([key, part]) {
+        const conf =
+          part && part.confidence && part.confidence.score != null
+            ? " · " + String(Math.round(Number(part.confidence.score) * 100)) + "% fit"
+            : "";
         return (
           "<tr><td><span class=\"hx-mono\">" +
           escapeHtml(key) +
           "</span></td><td>" +
-          escapeHtml(part.name || "—") +
+          escapeHtml((part.name || "—") + conf) +
           "</td><td class=\"hx-text-mint\">" +
           formatRowPrice(part) +
           "</td><td>" +
@@ -350,6 +355,34 @@
       const k = entry.kind;
       if (k === "session_start") {
         return "▸ Request: " + truncate(entry.user_input, 200);
+      }
+      if (k === "hard_constraints") {
+        return "▸ Hard constraints detected: " + escapeHtml(JSON.stringify(entry.constraints || {}));
+      }
+      if (k === "constraints_applied") {
+        const applied = Array.isArray(entry.applied) ? entry.applied : [];
+        if (!applied.length) return "";
+        const lines = applied.map(function (x) {
+          return (
+            String(x.slot) +
+            ": " +
+            String(x.replaced_id || "—") +
+            " → " +
+            String(x.picked_id || "—") +
+            (x.constraint ? " (match: " + String(x.constraint) + ")" : "")
+          );
+        });
+        return (
+          "▸ Adjusted parts to match your request (attempt " +
+          String(entry.attempt || "?") +
+          "):\n  " +
+          escapeHtml(lines.join("\n  "))
+        );
+      }
+      if (k === "assistant_note") {
+        const title = entry.title ? String(entry.title) : "Note";
+        const msg = entry.message ? String(entry.message) : "";
+        return "▸ " + escapeHtml(title) + (msg ? "\n  " + escapeHtml(msg) : "");
       }
       if (k === "phase" && entry.phase) {
         var phaseName = String(entry.phase);

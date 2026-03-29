@@ -33,6 +33,7 @@ py-modules = [
     "ebay_api",
     "price_comparison",
     "intake",
+    "eli5",
 ]
 
 [dependency-groups]

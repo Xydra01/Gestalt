@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 from crew import run_build_assistant
+from eli5 import Eli5UnavailableError, generate_eli5_explanation
 from intake import analyze_build_intake, merge_user_clarification
 from price_comparison import enrich_crew_payload_with_pricing
 
@@ -172,6 +173,27 @@ def build_stream():
             "Connection": "keep-alive",
         },
     )
+
+
+@app.route("/explain", methods=["POST"])
+def explain_eli5():
+    """Beginner-friendly explanation for a completed build (requires Gemini API key)."""
+    body = request.get_json(silent=True) or {}
+    build = body.get("build")
+    analysis = body.get("analysis")
+    if not isinstance(build, dict) or not build:
+        return jsonify({"error": "Missing or empty build"}), 400
+    if analysis is not None and not isinstance(analysis, dict):
+        return jsonify({"error": "analysis must be an object"}), 400
+    try:
+        text = generate_eli5_explanation(build, analysis)
+    except Eli5UnavailableError as e:
+        return jsonify({"error": str(e)}), 503
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"eli5": text})
 
 
 def main() -> None:

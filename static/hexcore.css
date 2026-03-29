@@ -517,3 +517,29 @@
   color: var(--hx-mint);
   font-family: var(--hx-font-body);
 }
+
+.hx-eli5-wrap {
+  margin-top: 20px;
+  padding: 18px 20px 22px;
+  border-radius: var(--hx-radius-lg);
+  border: 1px solid var(--hx-border);
+  background: linear-gradient(165deg, var(--hx-surface-2), var(--hx-surface));
+  box-shadow: 0 0 0 1px rgba(196, 181, 253, 0.06);
+}
+
+.hx-eli5-title {
+  font-family: var(--hx-font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  color: var(--hx-lavender);
+  margin-bottom: 12px;
+}
+
+.hx-eli5-body {
+  font-family: var(--hx-font-body);
+  font-size: 0.92rem;
+  line-height: 1.75;
+  color: var(--hx-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

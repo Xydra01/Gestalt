@@ -65,6 +65,7 @@
 
   <script>
     var gestaltOriginalPrompt = "";
+    var lastBuildPayload = null;
 
     function formatClarifyPanel(data) {
       const qs = Array.isArray(data.questions) ? data.questions : [];
@@ -352,14 +353,67 @@
         if (data.pricing) {
           html += formatPricingSummary(data.pricing);
         }
+        lastBuildPayload = { build: data.build, analysis: data.analysis || null };
+        html +=
+          '<div class="hx-row" style="margin-top:18px">' +
+          '<button type="button" class="hx-btn hx-btn-ghost" id="eli5-btn" onclick="gestaltExplainEli5()">Explain Like I\'m a Beginner</button>' +
+          "</div>" +
+          '<div id="eli5-panel" style="display:none" class="hx-eli5-wrap" aria-live="polite"></div>';
         resultEl.innerHTML = html;
         setBadge("Ready", "mint");
       } else {
+        lastBuildPayload = null;
         resultEl.innerHTML =
           '<div class="hx-alert hx-alert-danger">' +
           escapeHtml(data.error || "Build could not be completed.") +
           "</div>";
         setBadge("Failed", "peach");
+      }
+    }
+
+    async function gestaltExplainEli5() {
+      const panel = document.getElementById("eli5-panel");
+      if (!panel || !lastBuildPayload || !lastBuildPayload.build) {
+        return;
+      }
+      panel.style.display = "block";
+      panel.innerHTML =
+        '<div class="hx-eli5-title">📖 Generating beginner-friendly explanation…</div>' +
+        '<p class="hx-body" style="color:var(--hx-text-muted)">One moment.</p>';
+      try {
+        const res = await fetch("/explain", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            build: lastBuildPayload.build,
+            analysis: lastBuildPayload.analysis,
+          }),
+        });
+        const ct = (res.headers.get("content-type") || "").toLowerCase();
+        let payload = {};
+        if (ct.includes("application/json")) {
+          payload = await res.json();
+        }
+        if (!res.ok) {
+          panel.innerHTML =
+            '<div class="hx-eli5-title">📖 Explain Like I\'m a Beginner</div>' +
+            '<p class="hx-alert hx-alert-danger" style="margin:0">' +
+            escapeHtml(payload.error || res.statusText || "Could not generate explanation.") +
+            "</p>";
+          return;
+        }
+        const text = payload.eli5 || "";
+        panel.innerHTML =
+          '<div class="hx-eli5-title">📖 EXPLAIN LIKE I\'M A BEGINNER</div>' +
+          '<div class="hx-eli5-body">' +
+          escapeHtml(text) +
+          "</div>";
+      } catch (e) {
+        panel.innerHTML =
+          '<div class="hx-eli5-title">📖 Explain Like I\'m a Beginner</div>' +
+          '<p class="hx-alert hx-alert-danger" style="margin:0">' +
+          escapeHtml(e.message) +
+          "</p>";
       }
     }
 
@@ -482,6 +536,7 @@
 
     function clearUi() {
       gestaltOriginalPrompt = "";
+      lastBuildPayload = null;
       const logEl = document.getElementById("log");
       logEl.textContent = "Awaiting request…";
       logEl.classList.add("hx-terminal-empty");

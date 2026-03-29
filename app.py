@@ -119,6 +119,13 @@ def build_stream():
         return jsonify({"error": "Missing or empty prompt"}), 400
 
     def generate():
+        """
+        SSE generator for the UI.
+
+        Emits spec-compliant SSE frames (``event:`` + ``data:``) so EventSource and intermediaries
+        can handle the stream correctly. Also emits occasional keepalive comments to prevent idle
+        timeouts on some proxies.
+        """
         intake = analyze_build_intake(merged)
         if not intake.get("sufficient"):
             clarify = {

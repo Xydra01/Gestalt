@@ -330,13 +330,16 @@ def explain_eli5():
         return jsonify({"error": "Invalid request", "details": e.errors()}), 400
     build = req.build
     analysis = req.analysis
+    trace = req.agent_trace
     if not isinstance(build, dict) or not build:
         return jsonify({"error": "Missing or empty build"}), 400
     if analysis is not None and not isinstance(analysis, dict):
         return jsonify({"error": "analysis must be an object"}), 400
+    if trace is not None and not isinstance(trace, list):
+        return jsonify({"error": "agent_trace must be an array"}), 400
     _inc("eli5_requested")
     try:
-        text = generate_eli5_explanation(build, analysis)
+        text = generate_eli5_explanation(build, analysis, trace)
     except Eli5UnavailableError as e:
         _inc("eli5_errored")
         return jsonify({"error": str(e)}), 503

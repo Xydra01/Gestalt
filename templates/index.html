@@ -465,7 +465,11 @@
         if (data.pricing) {
           html += formatPricingSummary(data.pricing);
         }
-        lastBuildPayload = { build: data.build, analysis: data.analysis || null };
+        lastBuildPayload = {
+          build: data.build,
+          analysis: data.analysis || null,
+          agent_trace: Array.isArray(data.agent_trace) ? data.agent_trace : null,
+        };
         html +=
           '<div class="hx-row" style="margin-top:18px">' +
           '<button type="button" class="hx-btn hx-btn-ghost hvr-pop" id="eli5-btn" onclick="gestaltExplainEli5()">Explain Like I\'m a Beginner</button>' +
@@ -506,6 +510,7 @@
           body: JSON.stringify({
             build: lastBuildPayload.build,
             analysis: lastBuildPayload.analysis,
+            agent_trace: lastBuildPayload.agent_trace,
           }),
         });
         const ct = (res.headers.get("content-type") || "").toLowerCase();

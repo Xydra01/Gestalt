@@ -25,4 +25,5 @@ class ExplainRequest(BaseModel):
 
     build: dict[str, Any] = Field(default_factory=dict)
     analysis: dict[str, Any] | None = None
+    agent_trace: list[dict[str, Any]] | None = None
 

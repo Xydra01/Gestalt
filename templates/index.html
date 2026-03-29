@@ -24,7 +24,7 @@
       </p>
       <div class="hx-hero-pills">
         <span class="hx-pill hx-pill-lav">Agents</span>
-        <span class="hx-pill hx-pill-mint">Mock /build</span>
+        <span class="hx-pill hx-pill-mint">Live crew · SSE</span>
         <span class="hx-pill hx-pill-rose">Flask</span>
       </div>
     </div>
@@ -98,55 +98,178 @@
       else el.classList.add("hx-badge-lavender");
     }
 
+    function formatAnalysisSummary(a) {
+      if (typeof a === "string") return a;
+      if (!a || typeof a !== "object") return "";
+      const bits = [
+        a.budget != null ? "Budget ~$" + String(a.budget) : "",
+        a.use_case,
+        a.priority,
+      ].filter(Boolean);
+      if (Array.isArray(a.constraints) && a.constraints.length) {
+        bits.push("Constraints: " + a.constraints.join(", "));
+      }
+      return bits.join(" · ");
+    }
+
+    function truncate(s, n) {
+      if (s == null) return "";
+      const t = String(s);
+      return t.length <= n ? t : t.slice(0, n) + "…";
+    }
+
+    function formatTraceEntry(entry) {
+      if (!entry || typeof entry !== "object") return "";
+      const k = entry.kind;
+      if (k === "session_start") {
+        return "▸ Request: " + truncate(entry.user_input, 200);
+      }
+      if (k === "phase" && entry.phase) {
+        return "▸ Phase «" + escapeHtml(String(entry.phase)) + "» " + (entry.status || "");
+      }
+      if (k === "llm_task_output") {
+        const agent = entry.agent != null ? String(entry.agent) : "agent";
+        const phase = entry.crew_phase ? " [" + String(entry.crew_phase) + "]" : "";
+        const raw = entry.raw != null ? String(entry.raw) : "";
+        return "◆ " + escapeHtml(agent) + phase + "\n  " + escapeHtml(truncate(raw, 1200));
+      }
+      if (k === "crew_error") {
+        return "✗ Crew (" + escapeHtml(String(entry.phase || "?")) + "): " + escapeHtml(String(entry.message || ""));
+      }
+      if (k === "analysis_complete") {
+        const pa = entry.parsed_analysis;
+        const summary = formatAnalysisSummary(pa);
+        const src = entry.llm_used ? "LLM" : "heuristics";
+        return "✓ Analysis (" + src + "): " + escapeHtml(summary || "(parsed)");
+      }
+      if (k === "retry_attempt") {
+        const pe = entry.prior_validation_error;
+        const hint = pe ? " — prior: " + truncate(pe, 120) : "";
+        return "↻ Recommendation attempt " + entry.attempt + "/" + entry.max_retries + escapeHtml(hint);
+      }
+      if (k === "recommendation_skipped") {
+        return "… Recommendation skipped (" + escapeHtml(String(entry.reason || "")) + ")";
+      }
+      if (k === "validation") {
+        const ok = entry.passed === true;
+        const errBits = Array.isArray(entry.errors)
+          ? entry.errors
+              .map(function (e) {
+                return e && e.message ? String(e.message) : JSON.stringify(e);
+              })
+              .join("; ")
+          : "";
+        return (ok ? "✓ Validation passed" : "✗ Validation failed") +
+          " (attempt " + String(entry.attempt) + ")" +
+          (errBits ? "\n  " + escapeHtml(truncate(errBits, 500)) : "");
+      }
+      return escapeHtml(truncate(JSON.stringify(entry), 400));
+    }
+
+    function applyBuildResult(data) {
+      const logEl = document.getElementById("log");
+      const resultEl = document.getElementById("result");
+      const summary = formatAnalysisSummary(data.analysis);
+      if (summary) {
+        logEl.textContent += "\n— Final analysis —\n" + summary + "\n";
+      }
+      if (data.success && data.build) {
+        let html = formatBuildTable(data.build);
+        if (data.total != null) {
+          html +=
+            '<div class="hx-total-bar"><span>Total: <span class="hx-text-lavender">$' +
+            escapeHtml(String(data.total)) +
+            "</span></span>" +
+            (data.savings != null
+              ? '<span class="hx-savings">Est. savings vs prebuilt: $' +
+                escapeHtml(String(data.savings)) +
+                "</span>"
+              : "") +
+            "</div>";
+        }
+        resultEl.innerHTML = html;
+        setBadge("Ready", "mint");
+      } else {
+        resultEl.innerHTML =
+          '<div class="hx-alert hx-alert-danger">' +
+          escapeHtml(data.error || "Build could not be completed.") +
+          "</div>";
+        setBadge("Failed", "peach");
+      }
+    }
+
     async function runBuild() {
       const prompt = document.getElementById("prompt").value;
       const logEl = document.getElementById("log");
       const resultEl = document.getElementById("result");
       const btn = document.getElementById("build-btn");
       logEl.classList.remove("hx-terminal-empty");
-      logEl.textContent = "Contacting /build…";
+      logEl.textContent = "Connecting to crew stream…\n";
       resultEl.innerHTML = "";
       setBadge("Working", "lavender");
       btn.disabled = true;
       try {
-        const response = await fetch("/build", {
+        const response = await fetch("/build/stream", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
           body: JSON.stringify({ prompt }),
         });
-        const data = await response.json();
+        const ct = (response.headers.get("content-type") || "").toLowerCase();
         if (!response.ok) {
           logEl.textContent = "";
+          let msg = response.statusText;
+          if (ct.includes("application/json")) {
+            try {
+              const errBody = await response.json();
+              msg = errBody.error || msg;
+            } catch (_) {}
+          }
           resultEl.innerHTML =
-            '<div class="hx-alert hx-alert-danger">Request failed: ' +
-            escapeHtml(data.error || response.statusText) +
-            "</div>";
+            '<div class="hx-alert hx-alert-danger">Request failed: ' + escapeHtml(msg) + "</div>";
           setBadge("Error", "peach");
           return;
         }
-        logEl.textContent = data.analysis || "[no analysis string]";
-        if (data.success && data.build) {
-          let html = formatBuildTable(data.build);
-          if (data.total != null) {
-            html +=
-              '<div class="hx-total-bar"><span>Total: <span class="hx-text-lavender">$' +
-              escapeHtml(String(data.total)) +
-              "</span></span>" +
-              (data.savings != null
-                ? '<span class="hx-savings">Est. savings vs prebuilt: $' +
-                  escapeHtml(String(data.savings)) +
-                  "</span>"
-                : "") +
-              "</div>";
-          }
-          resultEl.innerHTML = html;
-          setBadge("Ready", "mint");
-        } else {
+        if (!response.body || !response.body.getReader) {
           resultEl.innerHTML =
-            '<div class="hx-alert hx-alert-danger">' +
-            escapeHtml(data.error || "Build could not be completed.") +
-            "</div>";
-          setBadge("Failed", "peach");
+            '<div class="hx-alert hx-alert-danger">Streaming not supported in this browser.</div>';
+          setBadge("Error", "peach");
+          return;
+        }
+        logEl.textContent = "";
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let sep;
+          while ((sep = buffer.indexOf("\n\n")) !== -1) {
+            const block = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            const dataLine = block.split("\n").find(function (line) {
+              return line.indexOf("data: ") === 0;
+            });
+            if (!dataLine) continue;
+            let obj;
+            try {
+              obj = JSON.parse(dataLine.slice(6));
+            } catch (_) {
+              continue;
+            }
+            if (obj.event === "trace" && obj.entry) {
+              logEl.textContent += formatTraceEntry(obj.entry) + "\n\n";
+              logEl.scrollTop = logEl.scrollHeight;
+            } else if (obj.event === "complete" && obj.data) {
+              applyBuildResult(obj.data);
+            } else if (obj.event === "error") {
+              resultEl.innerHTML =
+                '<div class="hx-alert hx-alert-danger">' +
+                escapeHtml(obj.message || "Unknown error") +
+                "</div>";
+              setBadge("Failed", "peach");
+            }
+          }
         }
       } catch (e) {
         logEl.textContent = "";

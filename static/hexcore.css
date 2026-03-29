@@ -266,6 +266,8 @@
   font-size: 0.82rem;
   line-height: 1.65;
   min-height: 120px;
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--hx-text-muted);

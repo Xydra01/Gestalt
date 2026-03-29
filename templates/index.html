@@ -648,9 +648,16 @@
     (function initHeroScrollCollapse() {
       var hero = document.getElementById("hx-top");
       if (!hero) return;
-      /* Hysteresis: one threshold + header height change caused scrollY to bounce across the cutoff. */
-      var SCROLL_COLLAPSE_AT = 92;
-      var SCROLL_EXPAND_AT = 36;
+      /*
+        Prevent flicker/jitter:
+        - Collapsing the sticky header changes page layout height.
+        - If we expand/collapse near a boundary, the layout shift can nudge scrollY back across the threshold.
+        Strategy:
+        - Collapse once you’re clearly past the hero.
+        - Only expand when you’re basically back at the very top.
+      */
+      var SCROLL_COLLAPSE_AT = 120;
+      var SCROLL_EXPAND_AT = 8;
       var ticking = false;
       function apply() {
         ticking = false;

@@ -97,6 +97,16 @@
     </section>
   </main>
 
+  <footer class="hx-footer" aria-label="App metadata">
+    <div class="hx-footer-inner">
+      <span class="hx-footer-muted">Status:</span> <span id="hx-health">checking…</span>
+      <span class="hx-footer-sep">·</span>
+      <span class="hx-footer-muted">Version:</span> <span id="hx-version">—</span>
+      <span class="hx-footer-sep">·</span>
+      <span class="hx-footer-muted">Commit:</span> <span id="hx-commit">—</span>
+    </div>
+  </footer>
+
   <script>
     var gestaltOriginalPrompt = "";
     var lastBuildPayload = null;
@@ -656,6 +666,25 @@
 
     document.getElementById("build-btn").addEventListener("click", runBuild);
     document.getElementById("clear-btn").addEventListener("click", clearUi);
+
+    (function initHealthFooter() {
+      var healthEl = document.getElementById("hx-health");
+      var verEl = document.getElementById("hx-version");
+      var shaEl = document.getElementById("hx-commit");
+      if (!healthEl || !verEl || !shaEl) return;
+      fetch("/healthz")
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          healthEl.textContent = j && j.status ? String(j.status) : "unknown";
+          verEl.textContent = j && j.version ? String(j.version) : "dev";
+          shaEl.textContent = j && j.commit ? String(j.commit).slice(0, 12) : "local";
+        })
+        .catch(function () {
+          healthEl.textContent = "unknown";
+          verEl.textContent = "dev";
+          shaEl.textContent = "local";
+        });
+    })();
 
     (function initHeroScrollState() {
       // Less dynamic: never collapse/expand the header (avoids any layout shift).

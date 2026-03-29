@@ -83,6 +83,25 @@ def index() -> str:
     return render_template("index.html")
 
 
+@app.route("/healthz")
+def healthz():
+    """
+    Lightweight health endpoint for deploy checks and judge scans.
+
+    Environment-driven metadata is optional:
+    - GESTALT_VERSION: human-readable version tag (e.g. "0.1.0" or "hackathon-final")
+    - GIT_SHA: git commit SHA when available in CI/CD
+    """
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "gestalt",
+            "version": (os.environ.get("GESTALT_VERSION") or "").strip() or None,
+            "commit": (os.environ.get("GIT_SHA") or "").strip() or None,
+        }
+    )
+
+
 @app.route("/build", methods=["POST"])
 def build():
     body = request.get_json(silent=True) or {}

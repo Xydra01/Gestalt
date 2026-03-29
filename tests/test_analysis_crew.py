@@ -22,6 +22,7 @@ from crew import (
     run_build_assistant,
     total_price_for_build,
 )
+from price_comparison import enrich_crew_payload_with_pricing
 
 
 def test_parse_analysis_result_valid_json() -> None:
@@ -209,6 +210,103 @@ def test_retry_loop_succeeds_on_second_attempt(mock_kickoff: object, mock_valida
     # Solver can find a compatible combo on attempt 1 without needing a 2nd recommendation kickoff.
     assert mock_kickoff.call_count in (2, 3)
     assert mock_validate.call_count >= 2
+
+
+@patch("crew.find_compatible_build_from_candidates")
+@patch("crew.Crew.kickoff")
+def test_run_build_assistant_targeted_psu_substitution(
+    mock_kickoff: object, mock_combo: object
+) -> None:
+    """Combo solver does not fix PSU; typed resolver swaps to a qualifying PSU."""
+    mock_combo.return_value = (None, None)
+    analysis_json = json.dumps(
+        {
+            "budget": 1500,
+            "use_case": "creative work",
+            "priority": "max quality",
+            "constraints": [],
+        }
+    )
+    recommendation_json = json.dumps(
+        {
+            "selected_ids": {
+                "cpu": "amd-ryzen-5-7600",
+                "gpu": "nvidia-rtx-4090",
+                "motherboard": "gigabyte-b650m-ds3h",
+                "ram": "corsair-vengeance-32gb",
+                "psu": "evga-500-w1",
+                "case": "deepcool-cc560",
+            }
+        }
+    )
+    mock_kickoff.side_effect = [analysis_json, recommendation_json]
+    with patch.dict(
+        os.environ,
+        {"GEMINI_API_KEY": "fake-gemini-key", "GOOGLE_API_KEY": "", "OPENAI_API_KEY": ""},
+    ):
+        out = json.loads(run_build_assistant("I want a $1500 editing rig"))
+    assert out["success"] is True
+    trace = out["agent_trace"]
+    assert any(e.get("kind") == "targeted_substitution" for e in trace)
+    sub = next(e for e in trace if e.get("kind") == "targeted_substitution")
+    assert sub.get("validator_code") == "INSUFFICIENT_POWER"
+    assert sub.get("strategy") == "PSU_UNDERPOWERED"
+    assert out["build"]["psu"]["wattage"] >= 725
+
+
+@patch("crew.find_compatible_build_from_candidates")
+@patch("crew.Crew.kickoff")
+def test_targeted_substitution_then_live_pricing_enrichment_mocked(
+    mock_kickoff: object, mock_combo: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Typed substitution output remains compatible with mocked live-price enrichment."""
+    mock_combo.return_value = (None, None)
+    analysis_json = json.dumps(
+        {
+            "budget": 1500,
+            "use_case": "creative work",
+            "priority": "max quality",
+            "constraints": [],
+        }
+    )
+    recommendation_json = json.dumps(
+        {
+            "selected_ids": {
+                "cpu": "amd-ryzen-5-7600",
+                "gpu": "nvidia-rtx-4090",
+                "motherboard": "gigabyte-b650m-ds3h",
+                "ram": "corsair-vengeance-32gb",
+                "psu": "evga-500-w1",
+                "case": "deepcool-cc560",
+            }
+        }
+    )
+    mock_kickoff.side_effect = [analysis_json, recommendation_json]
+    with patch.dict(
+        os.environ,
+        {"GEMINI_API_KEY": "fake-gemini-key", "GOOGLE_API_KEY": "", "OPENAI_API_KEY": ""},
+    ):
+        base_out = json.loads(run_build_assistant("I want a $1500 editing rig"))
+    assert base_out["success"] is True
+    assert any(e.get("kind") == "targeted_substitution" for e in base_out["agent_trace"])
+
+    monkeypatch.setenv("RAINFOREST_API_KEY", "rk")
+    monkeypatch.setenv("SERPAPI_API_KEY", "sk")
+    monkeypatch.setattr(
+        "price_comparison.get_amazon_price",
+        lambda name, key=None: {"source": "amazon", "price": 111, "title": name, "url": "https://a"},
+    )
+    monkeypatch.setattr(
+        "price_comparison.get_ebay_price",
+        lambda name, key=None: {"source": "ebay", "price": 222, "note": "n", "url": "https://e"},
+    )
+
+    enriched = enrich_crew_payload_with_pricing(base_out)
+    assert enriched["success"] is True
+    assert "pricing" in enriched
+    assert enriched["pricing"]["pricing_basis"] == "live_mixed"
+    assert enriched["build"]["cpu"]["price_comparison"]["amazon"]["available"] is True
+    assert enriched["build"]["cpu"]["price_comparison"]["ebay"]["available"] is True
 
 
 def test_parse_selected_ids_fenced() -> None:

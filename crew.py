@@ -9,6 +9,7 @@ Feature map (master plan → code):
   `find_compatible_build_from_candidates` to pick the first compatible combination
 - Confidence scores: `add_confidence_scores` adds per-part `{confidence: {score, reasons}}`
 - Streaming trace: trace entries are pushed to an optional SSE queue (see `app.py`)
+- Typed repair: `conflict_resolver.resolve_conflict` swaps one slot per validator code before LLM retry
 
 Reality note:
 There are two LLM agents (analysis + recommendation). Validation and the combo solver are
@@ -30,7 +31,18 @@ from dotenv import load_dotenv
 
 from agents import analysis_agent, recommendation_agent, resolve_llm
 from compatibility_checker import validate_build
+from conflict_resolver import resolve_conflict
 from parts_catalog import load_parts_catalog
+
+# Validator codes handled by ``resolve_conflict`` (others skip straight to LLM retry guidance).
+KNOWN_CONFLICT_CODES: frozenset[str] = frozenset(
+    {
+        "INSUFFICIENT_POWER",
+        "SOCKET_MISMATCH",
+        "RAM_GEN_MISMATCH",
+        "GPU_CLEARANCE_FAIL",
+    }
+)
 
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
@@ -828,6 +840,8 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
 
     error: str | None = None
     max_retries = 3
+    # Typed substitutions (resolve_conflict) share this budget with the outer retry cap.
+    repair_budget = max_retries
 
     for attempt in range(max_retries):
         agent_trace.append(
@@ -928,6 +942,48 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
                 validation = candidate_validation
                 agent_trace.append({"kind": "combo_selected", "attempt": attempt + 1})
                 _emit_trace_step(agent_trace)
+
+        # Typed single-slot substitution (validator error codes → catalog swap; no LLM).
+        while (
+            validation.get("passed") is not True
+            and repair_budget > 0
+        ):
+            errs = validation.get("errors") or []
+            if not isinstance(errs, list) or not errs:
+                break
+            fe = errs[0]
+            if not isinstance(fe, dict):
+                break
+            code = fe.get("code")
+            if not isinstance(code, str) or code not in KNOWN_CONFLICT_CODES:
+                break
+            patched, sub_meta = resolve_conflict(
+                code,
+                build,
+                parts_data,
+                rules_usd,
+                analysis,
+            )
+            repair_budget -= 1
+            if patched is None or not isinstance(sub_meta, dict):
+                break
+            build = patched
+            msg = sub_meta.get("message", "targeted substitution")
+            agent_trace.append(
+                {
+                    "kind": "targeted_substitution",
+                    "attempt": attempt + 1,
+                    "repair_budget_after": repair_budget,
+                    "validator_code": code,
+                    "strategy": sub_meta.get("strategy"),
+                    "slot": sub_meta.get("slot"),
+                    "message": msg,
+                    "from_id": sub_meta.get("from_id"),
+                    "to_id": sub_meta.get("to_id"),
+                }
+            )
+            _emit_trace_step(agent_trace)
+            validation = validate_build(build)
 
         agent_trace.append(
             {

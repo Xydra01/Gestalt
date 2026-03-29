@@ -80,7 +80,7 @@ Render sets **`PORT`** automatically. Use **`--timeout 300`** (or higher) so lon
 | **`GEMINI_API_KEY`** or **`GOOGLE_API_KEY`** | Required for full CrewAI + ELI5 behavior. |
 | **`GESTALT_LLM_MODEL`** | Optional LiteLLM id for Crew (e.g. `gemini/gemini-2.5-flash`). |
 | **`GESTALT_ELI5_MODEL`** | Optional `google.genai` model id for `/explain`. |
-| **`RAINFOREST_API_KEY`**, **`SCRAPINGBEE_API_KEY`** | Optional live pricing. |
+| **`RAINFOREST_API_KEY`**, **`SERPAPI_API_KEY`** | Optional live pricing. |
 | **`FLASK_DEBUG`** | Omit or `0` in production. |
 
 Optional: commit **`render.yaml`** and use Render **Blueprint** to provision the service; edit `plan` / `name` as needed.
@@ -98,7 +98,8 @@ Copy **`.env.example`** → **`.env`** (never commit `.env`). Important keys:
 | `GESTALT_ELI5_MODEL` | Optional | Override `google.genai` model id for ELI5 | Falls back to `GESTALT_GEMINI_SMOKE_MODEL` or default |
 | `GESTALT_GEMINI_SMOKE_MODEL` | Optional | Model used by `tests/test_gemini_smoke.py` | Defaults to `gemini-2.5-flash` |
 | `RAINFOREST_API_KEY` | Optional | Amazon live price lookup | Pricing uses catalog/list price fallback |
-| `SCRAPINGBEE_API_KEY` | Optional | eBay live price lookup | Pricing uses catalog/list price fallback |
+| `SERPER_API_KEY` | Optional | Amazon fallback lookup (when Rainforest is not configured) | Amazon price may be unavailable/approximate |
+| `SERPAPI_API_KEY` | Optional | Market price lookup via Google Shopping (legacy “eBay” slot) | Pricing uses catalog/list price fallback |
 | `GESTALT_PC_BUILD_SERVICE_RATE` | Optional | Savings rollup rate for “build service fee avoided” | Defaults to 0.12 |
 | `PORT` | Optional | Bind port (hosts like Render inject this) | Defaults to 5000 |
 | `HOST` | Optional | Bind host | Defaults to 127.0.0.1 |
@@ -108,7 +109,7 @@ Copy **`.env.example`** → **`.env`** (never commit `.env`). Important keys:
 
 ### Degraded-mode behavior (when keys are missing)
 
-- **No LLM key** (`GEMINI_API_KEY`/`GOOGLE_API_KEY` missing):\n  - Intake and build pipeline use heuristic fallbacks.\n  - `/explain` (ELI5) returns **503** with a clear message.\n- **No pricing keys** (`RAINFOREST_API_KEY`/`SCRAPINGBEE_API_KEY` missing):\n  - Live retailer pricing is skipped.\n  - The UI displays catalog/list pricing from `parts.json` and still shows rollups.
+- **No LLM key** (`GEMINI_API_KEY`/`GOOGLE_API_KEY` missing):\n  - Intake and build pipeline use heuristic fallbacks.\n  - `/explain` (ELI5) returns **503** with a clear message.\n- **No pricing keys** (`RAINFOREST_API_KEY`/`SERPAPI_API_KEY` missing):\n  - Live pricing is skipped.\n  - The UI displays catalog/list pricing from `parts.json` and still shows rollups.
 
 ## HTTP API (for the UI and tests)
 

@@ -27,7 +27,7 @@ If `GEMINI_API_KEY` / `GOOGLE_API_KEY` is missing:
 - `/explain` returns **503** (ELI5 requires Gemini).
 
 ### Pricing
-If `RAINFOREST_API_KEY` and/or `SCRAPINGBEE_API_KEY` is missing:
+If `RAINFOREST_API_KEY` and/or `SERPAPI_API_KEY` is missing:
 - Live pricing is unavailable.
 - The UI uses catalog/list prices from `parts.json` as fallback.
 

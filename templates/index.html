@@ -119,7 +119,7 @@
         );
       }
       if (!out.length) {
-        return '<span class="hx-text-dim">Catalog price · enable API keys for live links</span>';
+        return '<span class="hx-text-dim">—</span>';
       }
       return '<div class="hx-buy-row" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' + out.join("") + "</div>";
     }
@@ -148,34 +148,56 @@
 
     function formatPricingSummary(pr) {
       if (!pr || typeof pr !== "object") return "";
-      const cross = pr.cross_retailer_savings != null ? pr.cross_retailer_savings : 0;
-      const fee = pr.build_service_savings_estimate != null ? pr.build_service_savings_estimate : 0;
+      const cross = Number(pr.cross_retailer_savings != null ? pr.cross_retailer_savings : 0);
+      const fee = Number(pr.build_service_savings_estimate != null ? pr.build_service_savings_estimate : 0);
       const rate = pr.build_fee_rate_applied != null ? pr.build_fee_rate_applied : 0;
-      const tot = pr.estimated_savings_total != null ? pr.estimated_savings_total : 0;
+      const tot = Number(pr.estimated_savings_total != null ? pr.estimated_savings_total : 0);
       const basis = pr.pricing_basis || "";
-      return (
-        '<div class="hx-panel" style="margin-top:16px;padding:14px 16px">' +
-        '<div class="hx-label" style="margin-bottom:8px">Estimated savings breakdown</div>' +
-        '<p class="hx-body" style="margin:0 0 8px 0;color:var(--hx-text-muted)">' +
-        "Cross-retailer (cheaper of Amazon vs eBay when both returned): " +
-        '<span class="hx-text-mint">$' +
-        escapeHtml(String(cross)) +
-        "</span>. " +
-        "Typical PC build service fee avoided (" +
-        escapeHtml(String(Math.round(rate * 1000) / 10)) +
-        "% of parts total): " +
-        '<span class="hx-text-mint">$' +
-        escapeHtml(String(fee)) +
-        "</span>." +
-        "</p>" +
-        '<p class="hx-body-lg" style="margin:0">' +
-        "Total estimated savings: " +
-        '<span class="hx-text-lavender hx-glow-lavender">$' +
-        escapeHtml(String(tot)) +
-        "</span> " +
-        (basis ? '<span class="hx-badge hx-badge-lavender">' + escapeHtml(basis) + "</span>" : "") +
-        "</p></div>"
-      );
+      const parts = [];
+      if (cross > 0) {
+        parts.push(
+          "Cross-retailer savings (cheaper of Amazon vs eBay when both are available): " +
+            '<span class="hx-text-mint">$' +
+            escapeHtml(String(cross)) +
+            "</span>"
+        );
+      }
+      if (fee > 0) {
+        parts.push(
+          "Typical PC build service fee avoided (" +
+            escapeHtml(String(Math.round(rate * 1000) / 10)) +
+            "% of parts total): " +
+            '<span class="hx-text-mint">$' +
+            escapeHtml(String(fee)) +
+            "</span>"
+        );
+      }
+      const hasTotal = tot > 0;
+      if (!parts.length && !hasTotal) {
+        return "";
+      }
+      let body = '<div class="hx-panel" style="margin-top:16px;padding:14px 16px">';
+      body += '<div class="hx-label" style="margin-bottom:8px">Estimated savings breakdown</div>';
+      if (parts.length) {
+        body +=
+          '<p class="hx-body" style="margin:0 0 8px 0;color:var(--hx-text-muted)">' +
+          parts.join(". ") +
+          ".</p>";
+      }
+      if (hasTotal) {
+        body +=
+          '<p class="hx-body-lg" style="margin:0">' +
+          "Total estimated savings: " +
+          '<span class="hx-text-lavender hx-glow-lavender">$' +
+          escapeHtml(String(tot)) +
+          "</span> " +
+          (basis
+            ? '<span class="hx-badge hx-badge-lavender">' + escapeHtml(basis) + "</span>"
+            : "") +
+          "</p>";
+      }
+      body += "</div>";
+      return body;
     }
 
     function escapeHtml(s) {
@@ -275,7 +297,7 @@
             '<div class="hx-total-bar"><span>Parts total (live where available): <span class="hx-text-lavender">$' +
             escapeHtml(String(data.total)) +
             "</span></span>" +
-            (data.savings != null
+            (data.savings != null && Number(data.savings) !== 0
               ? '<span class="hx-savings">Est. savings (retail spread + build-fee): $' +
                 escapeHtml(String(data.savings)) +
                 "</span>"

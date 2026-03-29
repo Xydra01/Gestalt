@@ -16,6 +16,7 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 
 from crew import run_build_assistant
 from eli5 import Eli5UnavailableError, generate_eli5_explanation
+from http_utils import json_error, sse_comment, sse_pack
 from intake import analyze_build_intake, merge_user_clarification
 from price_comparison import enrich_crew_payload_with_pricing
 from schemas import BuildRequest, ExplainRequest
@@ -40,29 +41,6 @@ def _inc(metric: str, by: int = 1) -> None:
 
 def _set(metric: str, value: Any) -> None:
     _METRICS[metric] = value
-
-
-def _sse_pack(*, event: str | None = None, data: object | None = None) -> str:
-    """
-    Pack a single Server-Sent Event message.
-
-    We use the SSE fields (``event:``, ``data:``) rather than embedding an ``event`` key inside JSON,
-    so standard SSE clients and proxies behave correctly.
-    """
-    lines: list[str] = []
-    if event:
-        lines.append(f"event: {event}")
-    if data is not None:
-        payload = json.dumps(data, default=str)
-        # SSE allows multi-line data by repeating data: lines.
-        for chunk in payload.splitlines() or [""]:
-            lines.append(f"data: {chunk}")
-    return "\n".join(lines) + "\n\n"
-
-
-def _sse_comment(text: str = "ping") -> str:
-    """SSE keepalive comment line (ignored by EventSource)."""
-    return f": {text}\n\n"
 
 
 def _resolve_merged_prompt(body: dict) -> tuple[str, str]:
@@ -178,11 +156,11 @@ def build():
     try:
         req = BuildRequest.model_validate(request.get_json(silent=True) or {})
     except ValidationError as e:
-        return jsonify({"error": "Invalid request", "details": e.errors()}), 400
+        return json_error("Invalid request", status=400, details=e.errors())
     body = req.model_dump()
     merged, original = _resolve_merged_prompt(body)
     if not merged.strip():
-        return jsonify({"error": "Missing or empty prompt"}), 400
+        return json_error("Missing or empty prompt", status=400)
     intake = analyze_build_intake(merged)
     if not intake.get("sufficient"):
         return jsonify(
@@ -202,10 +180,10 @@ def build():
         data = _safe_enrich_pricing(data)
     except json.JSONDecodeError:
         _inc("build_errored")
-        return jsonify({"error": "Invalid crew response"}), 500
+        return json_error("Invalid crew response", status=500)
     except Exception as e:
         _inc("build_errored")
-        return jsonify({"error": str(e)}), 500
+        return json_error(str(e), status=500)
     _inc("build_completed")
     _set("last_build_duration_ms", round((time.time() - started) * 1000))
     return jsonify(data)
@@ -216,11 +194,11 @@ def build_stream():
     try:
         req = BuildRequest.model_validate(request.get_json(silent=True) or {})
     except ValidationError as e:
-        return jsonify({"error": "Invalid request", "details": e.errors()}), 400
+        return json_error("Invalid request", status=400, details=e.errors())
     body = req.model_dump()
     merged, original = _resolve_merged_prompt(body)
     if not merged.strip():
-        return jsonify({"error": "Missing or empty prompt"}), 400
+        return json_error("Missing or empty prompt", status=400)
 
     def generate():
         """
@@ -240,8 +218,8 @@ def build_stream():
                 "original_prompt": original,
                 "merged_prompt": merged,
             }
-            yield _sse_pack(event="clarify", data=clarify)
-            yield _sse_pack(
+            yield sse_pack(event="clarify", data=clarify)
+            yield sse_pack(
                 event="complete",
                 data={
                     "success": False,
@@ -278,37 +256,37 @@ def build_stream():
                 idle_ticks += 1
                 if idle_ticks >= 25:  # ~5s (25 * 0.2)
                     idle_ticks = 0
-                    yield _sse_comment("keepalive")
+                    yield sse_comment("keepalive")
                 continue
             idle_ticks = 0
             # Worker pushes items shaped like {"event": "...", ...}. Convert to proper SSE fields.
             if isinstance(item, dict):
                 ev = item.get("event")
                 if ev == "trace":
-                    yield _sse_pack(event="trace", data=item.get("entry"))
+                    yield sse_pack(event="trace", data=item.get("entry"))
                     continue
                 if ev == "clarify":
-                    yield _sse_pack(event="clarify", data=item.get("data"))
+                    yield sse_pack(event="clarify", data=item.get("data"))
                     continue
                 if ev == "complete":
-                    yield _sse_pack(event="complete", data=item.get("data"))
+                    yield sse_pack(event="complete", data=item.get("data"))
                     continue
                 if ev == "error":
-                    yield _sse_pack(event="error", data={"message": item.get("message")})
+                    yield sse_pack(event="error", data={"message": item.get("message")})
                     continue
             # Fallback for unexpected shapes
-            yield _sse_pack(event="trace", data=item)
+            yield sse_pack(event="trace", data=item)
         t.join(timeout=600)
         if result["err"]:
             _inc("build_errored")
-            yield _sse_pack(event="error", data={"message": result["err"]})
+            yield sse_pack(event="error", data={"message": result["err"]})
         elif result["payload"] is not None:
             _inc("build_completed")
             _set("last_build_duration_ms", round((time.time() - started) * 1000))
-            yield _sse_pack(event="complete", data=result["payload"])
+            yield sse_pack(event="complete", data=result["payload"])
         else:
             _inc("build_errored")
-            yield _sse_pack(event="error", data={"message": "Build finished without a result."})
+            yield sse_pack(event="error", data={"message": "Build finished without a result."})
 
     return Response(
         stream_with_context(generate()),
@@ -327,25 +305,25 @@ def explain_eli5():
     try:
         req = ExplainRequest.model_validate(request.get_json(silent=True) or {})
     except ValidationError as e:
-        return jsonify({"error": "Invalid request", "details": e.errors()}), 400
+        return json_error("Invalid request", status=400, details=e.errors())
     build = req.build
     analysis = req.analysis
     if not isinstance(build, dict) or not build:
-        return jsonify({"error": "Missing or empty build"}), 400
+        return json_error("Missing or empty build", status=400)
     if analysis is not None and not isinstance(analysis, dict):
-        return jsonify({"error": "analysis must be an object"}), 400
+        return json_error("analysis must be an object", status=400)
     _inc("eli5_requested")
     try:
         text = generate_eli5_explanation(build, analysis)
     except Eli5UnavailableError as e:
         _inc("eli5_errored")
-        return jsonify({"error": str(e)}), 503
+        return json_error(str(e), status=503)
     except ValueError as e:
         _inc("eli5_errored")
-        return jsonify({"error": str(e)}), 400
+        return json_error(str(e), status=400)
     except Exception as e:
         _inc("eli5_errored")
-        return jsonify({"error": str(e)}), 500
+        return json_error(str(e), status=500)
     return jsonify({"eli5": text})
 
 

@@ -14,23 +14,42 @@
   <link rel="stylesheet" href="https://unpkg.com/magic.css@1.4.8/dist/magic.min.css" crossorigin="anonymous" />
   <link rel="stylesheet" href="{{ url_for('static', filename='hexcore.css') }}" />
 </head>
-<body class="hx-root hx-layout hx-motion">
-  <header class="hx-hero">
+<body class="hx-root hx-layout hx-motion hx-booting">
+  <div class="hx-page-bg" aria-hidden="true">
+    <div class="hx-page-bg__blob hx-page-bg__blob--a"></div>
+    <div class="hx-page-bg__blob hx-page-bg__blob--b"></div>
+    <div class="hx-page-bg__blob hx-page-bg__blob--c"></div>
+    <div class="hx-page-bg__mesh"></div>
+    <div class="hx-page-bg__grid"></div>
+  </div>
+
+  <div class="hx-boot-splash" id="hx-boot-splash" aria-hidden="true">
+    <div class="hx-boot-splash__inner">
+      <span class="hx-boot-splash__logo">GESTALT</span>
+      <span class="hx-boot-splash__sub">PC BUILD CREW</span>
+    </div>
+  </div>
+
+  <header class="hx-hero" id="hx-top">
     <div class="hx-hero-bg" aria-hidden="true"></div>
     <div class="hx-hero-inner xyz-in" xyz="fade small stagger-2 duration-3">
-      <div class="hx-eyebrow">// GESTALT · PC BUILD CREW</div>
+      <div class="hx-hero-row1">
+        <div class="hx-eyebrow">// GESTALT · PC BUILD CREW</div>
+      </div>
       <h1 class="hx-display hx-h1 animate__animated animate__fadeInDown">
-        <span class="hx-text-lavender hx-glow-lavender hx-text-glow-pulse">GESTALT</span>
+        <span class="hx-logo-mark hx-text-lavender hx-glow-lavender hx-text-glow-pulse">GESTALT</span>
         <br />
         BUILD <span class="hx-text-muted" style="text-shadow: none">CHAT</span>
       </h1>
-      <p class="hx-body-lg hx-text-muted" style="max-width: 520px; margin-top: 14px">
-        Describe your budget and use case. We may ask a quick follow-up if we need more detail—then the crew returns a parts list and analysis.
-      </p>
-      <div class="hx-hero-pills magictime puffIn hx-magic-delay">
-        <span class="hx-pill hx-pill-lav">Agents</span>
-        <span class="hx-pill hx-pill-mint">Live crew · SSE</span>
-        <span class="hx-pill hx-pill-rose">Flask</span>
+      <div class="hx-hero-collapse-rest">
+        <p class="hx-body-lg hx-text-muted hx-hero-desc">
+          Describe your budget and use case. We may ask a quick follow-up if we need more detail—then the crew returns a parts list and analysis.
+        </p>
+        <div class="hx-hero-pills magictime puffIn hx-magic-delay">
+          <span class="hx-pill hx-pill-lav">Agents</span>
+          <span class="hx-pill hx-pill-mint">Live crew · SSE</span>
+          <span class="hx-pill hx-pill-rose">Flask</span>
+        </div>
       </div>
     </div>
   </header>
@@ -598,6 +617,54 @@
 
     document.getElementById("build-btn").addEventListener("click", runBuild);
     document.getElementById("clear-btn").addEventListener("click", clearUi);
+
+    (function initHeroScrollCollapse() {
+      var hero = document.getElementById("hx-top");
+      if (!hero) return;
+      var last = false;
+      function onScroll() {
+        var y = window.scrollY || document.documentElement.scrollTop;
+        var collapsed = y > 72;
+        if (collapsed === last) return;
+        last = collapsed;
+        hero.classList.toggle("hx-hero--collapsed", collapsed);
+      }
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    })();
+
+    (function initBootSplash() {
+      var splash = document.getElementById("hx-boot-splash");
+      function finish() {
+        document.body.classList.remove("hx-booting");
+        document.body.classList.add("hx-boot-done");
+        if (splash && splash.parentNode) {
+          splash.parentNode.removeChild(splash);
+        }
+      }
+      if (!splash) {
+        document.body.classList.remove("hx-booting");
+        document.body.classList.add("hx-boot-done");
+        return;
+      }
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        finish();
+        return;
+      }
+      requestAnimationFrame(function () {
+        splash.classList.add("hx-boot-splash--out");
+      });
+      var done = false;
+      function once() {
+        if (done) return;
+        done = true;
+        finish();
+      }
+      splash.addEventListener("transitionend", function (e) {
+        if (e.propertyName === "opacity" || e.propertyName === "transform") once();
+      });
+      setTimeout(once, 1400);
+    })();
   </script>
 </body>
 </html>

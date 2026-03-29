@@ -72,6 +72,72 @@ Core entrypoint:
 
 - `validate_build(build) -> {"passed": bool, "errors": [...] }`
 
+## Compatibility rules (explicit)
+
+Source of truth: `compatibility_checker.py` (functions `check_*` + `validate_build`).
+
+The validator expects a `build` dict containing these keys:
+
+- `cpu`, `gpu`, `motherboard`, `ram`, `psu`, `case`
+
+Each failure is returned as an object with:
+
+- `code`: stable identifier
+- `part`: which part should change
+- `message`: human-readable description of the mismatch
+- `fix`: plain-English instruction used to guide the next retry
+
+### Rule 1: CPU socket must match motherboard socket
+
+- **Fields used**: `cpu.socket`, `motherboard.socket`
+- **Condition**: `cpu["socket"] == motherboard["socket"]`
+- **Failure code**: `SOCKET_MISMATCH`
+- **Fix hint**: replace CPU or motherboard so sockets match
+
+### Rule 2: RAM DDR generation must be supported by motherboard
+
+- **Fields used**: `ram.ddr_gen`, `motherboard.ddr_support`
+- **Condition**:
+  - If motherboard supports `"DDR4/DDR5"`: RAM must be `"DDR4"` or `"DDR5"`
+  - Else: `ram["ddr_gen"] == motherboard["ddr_support"]`
+- **Failure code**: `RAM_GEN_MISMATCH`
+- **Fix hint**: choose RAM that matches the motherboard’s supported generation (or choose a motherboard that supports the RAM)
+
+### Rule 3: PSU must have headroom for CPU + GPU plus margin
+
+- **Fields used**: `cpu.tdp`, `gpu.tdp`, `psu.wattage`
+- **Load formula** (fixed allowances for platform + RAM):
+
+  \[
+  load = cpu.tdp + gpu.tdp + 50 + 10
+  \]
+
+- **Pass condition**:
+
+  \[
+  psu.wattage \\ge load + 150
+  \]
+
+- **Failure code**: `INSUFFICIENT_POWER`
+- **Fix hint**: pick a PSU rated at `required` watts or higher (or reduce CPU/GPU power draw)
+
+### Rule 4: GPU must fit in the case (length clearance)
+
+- **Fields used**: `gpu.length_mm`, `case.max_gpu_length_mm`
+- **Condition**: `gpu["length_mm"] <= case["max_gpu_length_mm"]`
+- **Failure code**: `GPU_CLEARANCE_FAIL`
+- **Fix hint**: choose a shorter GPU or a case with a larger max GPU length
+
+### How rule failures influence the next attempt
+
+The crew loop in `crew.py` runs up to a fixed number of recommendation attempts. After each attempt:
+
+1. It builds the candidate parts list from selected IDs.
+2. It runs `validate_build(build)`.
+3. It appends a `validation` entry to `agent_trace` that includes `passed` and any `errors`.
+4. When streaming, that entry is emitted to the UI as `event: trace` so users can see the compatibility check outcome.
+5. If validation failed, the next recommendation attempt is prompted with the validator’s fix hint to steer selection.
+
 ### Pricing enrichment (live + fallback)
 File: `price_comparison.py` (calls `amazon_api.py`, `ebay_api.py`)
 

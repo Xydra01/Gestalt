@@ -105,6 +105,10 @@ Copy **`.env.example`** → **`.env`** (never commit `.env`). Important keys:
 | `POST` | `/build/stream` | Same body; **SSE** (`text/event-stream`) using proper SSE fields: `event: trace|clarify|complete|error` with JSON in `data:`. Includes keepalive comment frames (`: keepalive`). |
 | `POST` | `/explain` | JSON: `build` (object), optional `analysis`. Returns `{ "eli5": "..." }` or error (503 if no API key for ELI5). |
 
+### Request validation
+
+Requests to `/build`, `/build/stream`, and `/explain` are validated with **Pydantic** at the HTTP boundary (see `schemas.py`). Unknown fields are ignored; invalid shapes return **400** with a `details` list.
+
 ## Testing
 
 **Default (CI-friendly, no network):**

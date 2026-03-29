@@ -645,29 +645,16 @@
     document.getElementById("build-btn").addEventListener("click", runBuild);
     document.getElementById("clear-btn").addEventListener("click", clearUi);
 
-    (function initHeroScrollCollapse() {
+    (function initHeroScrollState() {
+      // Less dynamic: never collapse/expand the header (avoids any layout shift).
+      // Only add a subtle "scrolled" shadow/tint once you leave the top.
       var hero = document.getElementById("hx-top");
       if (!hero) return;
-      /*
-        Prevent flicker/jitter:
-        - Collapsing the sticky header changes page layout height.
-        - If we expand/collapse near a boundary, the layout shift can nudge scrollY back across the threshold.
-        Strategy:
-        - Collapse once you’re clearly past the hero.
-        - Only expand when you’re basically back at the very top.
-      */
-      var SCROLL_COLLAPSE_AT = 120;
-      var SCROLL_EXPAND_AT = 8;
       var ticking = false;
       function apply() {
         ticking = false;
         var y = window.scrollY || document.documentElement.scrollTop;
-        var collapsed = hero.classList.contains("hx-hero--collapsed");
-        if (!collapsed && y >= SCROLL_COLLAPSE_AT) {
-          hero.classList.add("hx-hero--collapsed");
-        } else if (collapsed && y <= SCROLL_EXPAND_AT) {
-          hero.classList.remove("hx-hero--collapsed");
-        }
+        hero.classList.toggle("hx-hero--scrolled", y > 8);
       }
       function onScroll() {
         if (!ticking) {

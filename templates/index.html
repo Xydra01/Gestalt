@@ -621,16 +621,28 @@
     (function initHeroScrollCollapse() {
       var hero = document.getElementById("hx-top");
       if (!hero) return;
-      var last = false;
-      function onScroll() {
+      /* Hysteresis: one threshold + header height change caused scrollY to bounce across the cutoff. */
+      var SCROLL_COLLAPSE_AT = 92;
+      var SCROLL_EXPAND_AT = 36;
+      var ticking = false;
+      function apply() {
+        ticking = false;
         var y = window.scrollY || document.documentElement.scrollTop;
-        var collapsed = y > 72;
-        if (collapsed === last) return;
-        last = collapsed;
-        hero.classList.toggle("hx-hero--collapsed", collapsed);
+        var collapsed = hero.classList.contains("hx-hero--collapsed");
+        if (!collapsed && y >= SCROLL_COLLAPSE_AT) {
+          hero.classList.add("hx-hero--collapsed");
+        } else if (collapsed && y <= SCROLL_EXPAND_AT) {
+          hero.classList.remove("hx-hero--collapsed");
+        }
+      }
+      function onScroll() {
+        if (!ticking) {
+          ticking = true;
+          requestAnimationFrame(apply);
+        }
       }
       window.addEventListener("scroll", onScroll, { passive: true });
-      onScroll();
+      apply();
     })();
 
     (function initBootSplash() {

@@ -123,3 +123,39 @@ def test_enrich_payload_calls_amazon_and_ebay_live_sources(monkeypatch) -> None:
     assert comp["amazon"]["available"] is True
     assert comp["ebay"]["available"] is True
     assert comp["price_basis"] == "live"
+
+
+def test_partial_live_pricing_prefers_any_live_and_sets_buy_url(monkeypatch) -> None:
+    """
+    If only one live source returns, we should still:
+    - mark the slot as live
+    - choose the live effective_price
+    - provide a best_url (or a safe fallback) so the UI can render buy buttons
+    """
+    monkeypatch.setenv("RAINFOREST_API_KEY", "rk")
+    monkeypatch.setenv("SERPAPI_API_KEY", "")  # simulate SerpApi missing/unavailable
+    payload = {
+        "success": True,
+        "build": {
+            "cpu": {"name": "CPU", "price": 123},
+            "gpu": {"name": "GPU", "price": 0},
+            "motherboard": {"name": "MB", "price": 0},
+            "ram": {"name": "RAM", "price": 0},
+            "psu": {"name": "PSU", "price": 0},
+            "case": {"name": "CASE", "price": 0},
+        },
+    }
+
+    # Amazon returns a price but no URL (simulate provider shape change).
+    monkeypatch.setattr(
+        "price_comparison.get_amazon_price",
+        lambda name, key=None: {"source": "amazon", "price": 111, "title": "t"},
+    )
+    monkeypatch.setattr("price_comparison.get_ebay_price", lambda name, key=None: None)
+
+    out = enrich_crew_payload_with_pricing(payload)
+    comp = out["build"]["cpu"]["price_comparison"]
+    assert comp["price_basis"] == "live"
+    assert comp["effective_price"] == 111.0
+    assert comp["amazon"]["available"] is True
+    assert isinstance(comp.get("best_url"), str) and comp["best_url"]

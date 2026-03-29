@@ -24,6 +24,8 @@ from amazon_api import get_amazon_price
 from ebay_api import get_ebay_price
 
 _UNAVAILABLE_NOTE = "unavailable"
+_AMAZON_SEARCH_BASE = "https://www.amazon.com/s?k="
+_SHOPPING_SEARCH_BASE = "https://www.google.com/search?tbm=shop&q="
 
 # Typical system-integrator / boutique assembly margin on parts (env override).
 _BUILD_SERVICE_RATE_ENV = "GESTALT_PC_BUILD_SERVICE_RATE"
@@ -175,6 +177,13 @@ def get_all_prices(
 
     amazon_slot = _amazon_slot(amz_raw)
     ebay_slot = _ebay_slot(eb_raw)
+
+    # Ensure buy buttons can still render even if an upstream adapter returns a price without a URL.
+    # (This can happen if a provider omits product links or changes response shape.)
+    if amazon_slot.get("available") and not amazon_slot.get("url") and name:
+        amazon_slot["url"] = f"{_AMAZON_SEARCH_BASE}{name.strip().replace(' ', '+')}"
+    if ebay_slot.get("available") and not ebay_slot.get("url") and name:
+        ebay_slot["url"] = f"{_SHOPPING_SEARCH_BASE}{name.strip().replace(' ', '+')}"
 
     pa = amazon_slot["price"] if amazon_slot.get("available") else None
     pe = ebay_slot["price"] if ebay_slot.get("available") else None

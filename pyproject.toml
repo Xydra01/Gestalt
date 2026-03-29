@@ -32,6 +32,7 @@ py-modules = [
     "amazon_api",
     "ebay_api",
     "price_comparison",
+    "intake",
 ]
 
 [dependency-groups]

@@ -11,9 +11,32 @@ from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 from crew import run_build_assistant
+from intake import analyze_build_intake, merge_user_clarification
 from price_comparison import enrich_crew_payload_with_pricing
 
 _ROOT = Path(__file__).resolve().parent
+
+
+def _resolve_merged_prompt(body: dict) -> tuple[str, str]:
+    """
+    Return (merged_prompt, original_prompt_for_session).
+
+    First turn: only ``prompt`` is set. Follow-up: ``original_prompt`` + ``clarification_answers``.
+    """
+    op = (body.get("original_prompt") or "").strip()
+    p = (body.get("prompt") or "").strip()
+    clar = (body.get("clarification_answers") or "").strip()
+    if clar:
+        base = op or p
+        if not base:
+            merged = clar
+        else:
+            merged = merge_user_clarification(base, clar)
+        orig = op or p
+        return merged, orig
+    if p:
+        return p, p
+    return "", ""
 
 
 def _safe_enrich_pricing(data: dict) -> dict:
@@ -38,11 +61,22 @@ def index() -> str:
 @app.route("/build", methods=["POST"])
 def build():
     body = request.get_json(silent=True) or {}
-    prompt = (body.get("prompt") or "").strip()
-    if not prompt:
+    merged, original = _resolve_merged_prompt(body)
+    if not merged.strip():
         return jsonify({"error": "Missing or empty prompt"}), 400
+    intake = analyze_build_intake(merged)
+    if not intake.get("sufficient"):
+        return jsonify(
+            {
+                "success": False,
+                "needs_clarification": True,
+                "intake": intake,
+                "original_prompt": original,
+                "merged_prompt": merged,
+            }
+        )
     try:
-        raw = run_build_assistant(prompt)
+        raw = run_build_assistant(merged)
         data = json.loads(raw)
         data = _safe_enrich_pricing(data)
     except json.JSONDecodeError:
@@ -55,17 +89,46 @@ def build():
 @app.route("/build/stream", methods=["POST"])
 def build_stream():
     body = request.get_json(silent=True) or {}
-    prompt = (body.get("prompt") or "").strip()
-    if not prompt:
+    merged, original = _resolve_merged_prompt(body)
+    if not merged.strip():
         return jsonify({"error": "Missing or empty prompt"}), 400
 
     def generate():
+        intake = analyze_build_intake(merged)
+        if not intake.get("sufficient"):
+            clarify = {
+                "reason": intake.get("reason", ""),
+                "questions": intake.get("questions") or [],
+                "exploration_prompts": intake.get("exploration_prompts") or [],
+                "lost_user": bool(intake.get("lost_user")),
+                "original_prompt": original,
+                "merged_prompt": merged,
+            }
+            yield "data: " + json.dumps({"event": "clarify", "data": clarify}, default=str) + "\n\n"
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "event": "complete",
+                        "data": {
+                            "success": False,
+                            "needs_clarification": True,
+                            "intake": intake,
+                            "original_prompt": original,
+                        },
+                    },
+                    default=str,
+                )
+                + "\n\n"
+            )
+            return
+
         q: queue.Queue = queue.Queue()
         result: dict = {"payload": None, "err": None}
 
         def worker() -> None:
             try:
-                raw = run_build_assistant(prompt, stream_queue=q)
+                raw = run_build_assistant(merged, stream_queue=q)
                 data = json.loads(raw)
                 result["payload"] = _safe_enrich_pricing(data)
             except json.JSONDecodeError as e:

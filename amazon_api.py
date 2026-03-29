@@ -11,9 +11,9 @@ import json
 import os
 import re
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus, urlencode
-from urllib.request import Request, urlopen
+
+import requests
 
 # Environment variable used by :func:`get_amazon_price` when no key is passed in code.
 RAINFOREST_API_KEY_ENV = "RAINFOREST_API_KEY"
@@ -100,10 +100,13 @@ def search_amazon(query: str, api_key: str) -> tuple[int, str, str] | None:
     url = f"{_RAINFOREST_REQUEST_URL}?{params}"
 
     try:
-        req = Request(url, headers={"Accept": "application/json"})
-        with urlopen(req, timeout=_REQUEST_TIMEOUT_SEC) as resp:
-            body = resp.read().decode("utf-8")
-    except (HTTPError, URLError, TimeoutError, OSError):
+        resp = requests.get(
+            url, headers={"Accept": "application/json"}, timeout=_REQUEST_TIMEOUT_SEC
+        )
+        if resp.status_code != 200:
+            return None
+        body = resp.text
+    except requests.RequestException:
         return None
 
     try:
@@ -194,10 +197,10 @@ def search_amazon_via_serper(query: str, api_key: str) -> tuple[int, str, str] |
             "q": f"{query.strip()} site:amazon.com",
             "num": 5,
         }
-    ).encode("utf-8")
+    )
 
     try:
-        req = Request(
+        resp = requests.post(
             _SERPER_SEARCH_URL,
             data=payload,
             headers={
@@ -205,11 +208,12 @@ def search_amazon_via_serper(query: str, api_key: str) -> tuple[int, str, str] |
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
-            method="POST",
+            timeout=_REQUEST_TIMEOUT_SEC,
         )
-        with urlopen(req, timeout=_REQUEST_TIMEOUT_SEC) as resp:
-            body = resp.read().decode("utf-8")
-    except (HTTPError, URLError, TimeoutError, OSError):
+        if resp.status_code != 200:
+            return None
+        body = resp.text
+    except requests.RequestException:
         return None
 
     try:

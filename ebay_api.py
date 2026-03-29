@@ -100,7 +100,9 @@ def scrape_ebay_price(query: str, api_key: str) -> int | None:
     }
 
     try:
-        response = requests.get(_SERPAPI_URL, params=params, timeout=_REQUEST_TIMEOUT_SEC)
+        response = requests.get(
+            _SERPAPI_URL, params=params, timeout=_REQUEST_TIMEOUT_SEC
+        )
         if response.status_code != 200:
             return None
 
@@ -135,7 +137,7 @@ def scrape_ebay_price(query: str, api_key: str) -> int | None:
 def get_ebay_price(part_name: str, api_key: str | None = None) -> dict[str, Any] | None:
     """
     Look up a rough eBay price for a part name using SerpApi + eBay search.
-    
+
     Uses ``api_key`` when non-empty; otherwise reads ``SERPAPI_API_KEY``.
     Returns ``None`` on any failure.
     """

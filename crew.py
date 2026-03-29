@@ -425,6 +425,159 @@ def add_confidence_scores(
     return out
 
 
+def _slot_budget_usd(rules_usd: dict[str, float], slot: str) -> float | None:
+    key = "mobo" if slot == "motherboard" else slot
+    v = rules_usd.get(key)
+    return float(v) if isinstance(v, (int, float)) else None
+
+
+def _constraint_match_score(part: dict[str, Any], query: str) -> float:
+    toks = _tokenize_constraint(query)
+    if not toks:
+        return 0.0
+    blob = " ".join(str(part.get(k, "")).lower() for k in ("name", "title", "model", "id"))
+    hit = sum(1 for tok in toks if tok in blob)
+    return hit / max(1, len(toks))
+
+
+def _budget_fit_score(part: dict[str, Any], alloc_usd: float | None) -> float:
+    if alloc_usd is None or alloc_usd <= 0:
+        return 0.5
+    price = part.get("price")
+    if not isinstance(price, (int, float)):
+        return 0.4
+    p = float(price)
+    # Prefer <= alloc, but allow modest overage.
+    if p <= alloc_usd:
+        return 1.0
+    if p <= alloc_usd * 1.15:
+        return 0.75
+    if p <= alloc_usd * 1.30:
+        return 0.45
+    return 0.2
+
+
+def generate_candidates_for_slot(
+    *,
+    slot: str,
+    parts_data: dict[str, Any],
+    rules_usd: dict[str, float],
+    hard: dict[str, str],
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    """
+    Deterministically generate top-N candidates for a slot.
+
+    Ranking is based on constraint match (if present) plus budget fit.
+    """
+    key = SLOT_TO_PARTS_KEY[slot]
+    rows: list[Any] = parts_data.get(key) if isinstance(parts_data.get(key), list) else []
+    items: list[dict[str, Any]] = [r for r in rows if isinstance(r, dict)]
+    if not items:
+        return []
+
+    # RAM should respect the motherboard DDR support when we already have one.
+    if slot == "ram":
+        # We can't filter without a motherboard; the combo solver will pair later.
+        pass
+
+    alloc = _slot_budget_usd(rules_usd, slot)
+    q = hard.get(slot)
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for part in items:
+        cm = _constraint_match_score(part, q) if q else 0.0
+        bf = _budget_fit_score(part, alloc)
+        score = (0.65 * cm) + (0.35 * bf)
+        scored.append((score, part))
+
+    scored.sort(key=lambda t: t[0], reverse=True)
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for _s, p in scored:
+        pid = str(p.get("id") or "")
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        out.append(p)
+        if len(out) >= max(1, int(limit)):
+            break
+    return out
+
+
+def find_compatible_build_from_candidates(
+    *,
+    candidates: dict[str, list[dict[str, Any]]],
+    hard: dict[str, str],
+    rules_usd: dict[str, float],
+    agent_trace: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """
+    Try combinations of per-slot candidates and return the first compatible build.
+
+    Returns (build, validation) where validation is the result from validate_build().
+    """
+    slots = RECOMMENDATION_SLOTS
+    for slot in slots:
+        if not candidates.get(slot):
+            return None, None
+
+    tried = 0
+    max_tries = 60
+
+    # Small cartesian search with early stop.
+    for cpu in candidates["cpu"]:
+        for gpu in candidates["gpu"]:
+            for mobo in candidates["motherboard"]:
+                # Filter RAM candidates to DDR support of chosen board.
+                want_ddr = mobo.get("ddr_support") if isinstance(mobo.get("ddr_support"), str) else None
+                ram_list = candidates["ram"]
+                if want_ddr:
+                    filtered: list[dict[str, Any]] = []
+                    for r in ram_list:
+                        gen = r.get("ddr_gen")
+                        if want_ddr == "DDR4/DDR5":
+                            if gen in ("DDR4", "DDR5"):
+                                filtered.append(r)
+                        elif gen == want_ddr:
+                            filtered.append(r)
+                    if filtered:
+                        ram_list = filtered
+                for ram in ram_list:
+                    for psu in candidates["psu"]:
+                        for case in candidates["case"]:
+                            tried += 1
+                            build = {
+                                "cpu": cpu,
+                                "gpu": gpu,
+                                "motherboard": mobo,
+                                "ram": ram,
+                                "psu": psu,
+                                "case": case,
+                            }
+                            v = validate_build(build)
+                            if agent_trace is not None and tried <= 6:
+                                agent_trace.append(
+                                    {
+                                        "kind": "combo_try",
+                                        "n": tried,
+                                        "cpu": cpu.get("id"),
+                                        "gpu": gpu.get("id"),
+                                        "motherboard": mobo.get("id"),
+                                        "ram": ram.get("id"),
+                                        "psu": psu.get("id"),
+                                        "case": case.get("id"),
+                                        "passed": bool(v.get("passed")),
+                                    }
+                                )
+                                _emit_trace_step(agent_trace)
+                            if v.get("passed") is True:
+                                scored_build = add_confidence_scores(build, hard=hard, rules_usd=rules_usd)
+                                return scored_build, v
+                            if tried >= max_tries:
+                                return None, v
+    return None, None
+
 def draft_recommendation_prompt(
     analysis: dict[str, Any],
     error: str | None,
@@ -733,7 +886,33 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
         if applied:
             agent_trace.append({"kind": "constraints_applied", "applied": applied, "attempt": attempt + 1})
             _emit_trace_step(agent_trace)
+        # Multi-candidate solver: if the first pass fails, try a small ranked candidate set.
+        candidate_build: dict[str, Any] | None = None
+        candidate_validation: dict[str, Any] | None = None
+        candidates: dict[str, list[dict[str, Any]]] = {}
+        for slot in RECOMMENDATION_SLOTS:
+            candidates[slot] = generate_candidates_for_slot(
+                slot=slot, parts_data=parts_data, rules_usd=rules_usd, hard=hard, limit=3
+            )
+        agent_trace.append(
+            {
+                "kind": "candidate_set",
+                "attempt": attempt + 1,
+                "sizes": {k: len(v) for k, v in candidates.items()},
+            }
+        )
+        _emit_trace_step(agent_trace)
+
         validation = validate_build(build)
+        if validation.get("passed") is not True:
+            candidate_build, candidate_validation = find_compatible_build_from_candidates(
+                candidates=candidates, hard=hard, rules_usd=rules_usd, agent_trace=agent_trace
+            )
+            if candidate_build is not None and candidate_validation and candidate_validation.get("passed") is True:
+                build = candidate_build
+                validation = candidate_validation
+                agent_trace.append({"kind": "combo_selected", "attempt": attempt + 1})
+                _emit_trace_step(agent_trace)
 
         agent_trace.append(
             {
@@ -746,7 +925,9 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
         _emit_trace_step(agent_trace)
 
         if validation.get("passed") is True:
-            build = add_confidence_scores(build, hard=hard, rules_usd=rules_usd)
+            # If combo solver returned a scored build, don't double-score.
+            if not (isinstance(build.get("cpu"), dict) and isinstance(build.get("cpu", {}).get("confidence"), dict)):
+                build = add_confidence_scores(build, hard=hard, rules_usd=rules_usd)
             agent_trace.append({"kind": "confidence_scored", "attempt": attempt + 1})
             _emit_trace_step(agent_trace)
             if applied:

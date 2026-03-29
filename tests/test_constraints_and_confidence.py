@@ -4,6 +4,7 @@ from crew import (
     add_confidence_scores,
     apply_hard_constraints_to_build,
     extract_hard_part_constraints,
+    find_compatible_build_from_candidates,
 )
 
 
@@ -61,4 +62,33 @@ def test_add_confidence_scores_attaches_confidence() -> None:
     assert "confidence" in out["cpu"]
     assert 0.0 <= out["cpu"]["confidence"]["score"] <= 1.0
     assert isinstance(out["cpu"]["confidence"]["reasons"], list)
+
+
+def test_solver_picks_compatible_combo_when_first_choice_fails() -> None:
+    # Construct small candidates where first RAM is DDR4 but board is DDR5, and second RAM is DDR5.
+    cpu = {"id": "c1", "name": "CPU", "price": 200, "socket": "AM5", "tdp": 65}
+    gpu = {"id": "g1", "name": "GPU", "price": 400, "tdp": 200, "length_mm": 250}
+    mobo = {"id": "m1", "name": "B650", "price": 150, "socket": "AM5", "ddr_support": "DDR5"}
+    ram_bad = {"id": "r1", "name": "32GB DDR4 kit", "price": 90, "ddr_gen": "DDR4", "capacity": "32GB"}
+    ram_ok = {"id": "r2", "name": "32GB DDR5 kit", "price": 110, "ddr_gen": "DDR5", "capacity": "32GB"}
+    psu = {"id": "p1", "name": "750W", "price": 90, "wattage": 750}
+    case = {"id": "case1", "name": "Case", "price": 70, "max_gpu_length_mm": 330}
+
+    candidates = {
+        "cpu": [cpu],
+        "gpu": [gpu],
+        "motherboard": [mobo],
+        "ram": [ram_bad, ram_ok],
+        "psu": [psu],
+        "case": [case],
+    }
+    build, v = find_compatible_build_from_candidates(
+        candidates=candidates,
+        hard={"ram": "32gb"},
+        rules_usd={"cpu": 250, "gpu": 500, "mobo": 200, "ram": 150, "psu": 120, "case": 100},
+        agent_trace=None,
+    )
+    assert v is not None and v.get("passed") is True
+    assert build is not None
+    assert build["ram"]["id"] == "r2"
 

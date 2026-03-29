@@ -79,7 +79,7 @@ def analysis_agent() -> Agent:
 
 
 def recommendation_agent() -> Agent:
-    """Agent 2 – Recommendation: select part IDs from parts.json given analysis and errors."""
+    """Agent 2 – Recommendation: select part IDs from the injected catalog given analysis and errors."""
     llm = resolve_llm()
     kwargs: dict[str, Any] = {
         "role": "PC parts selector",

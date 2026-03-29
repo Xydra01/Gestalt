@@ -79,6 +79,14 @@ def _heuristic_intake(user_input: str) -> dict[str, Any]:
     has_use = use_guess is not None or _has_dev_or_productivity(raw)
     lost = _looks_lost_user(raw)
     n = len(raw)
+    # Signals that the user is asking for a *specific* build even if they forgot a budget.
+    # This prevents a "clarify forever" softlock: we can proceed using a sensible default budget.
+    part_intent = bool(
+        re.search(
+            r"\b(rtx|radeon|ryzen|intel|core i[3579]|am4|am5|lga\s?1700|ddr4|ddr5|nvme|itx|matx|atx)\b",
+            raw.lower(),
+        )
+    )
 
     # Detailed build brief: proceed without forcing more Q&A
     if n >= 140 and budget is not None and has_use:
@@ -94,6 +102,17 @@ def _heuristic_intake(user_input: str) -> dict[str, Any]:
         return {
             "sufficient": True,
             "reason": "Budget and primary use case are stated.",
+            "questions": [],
+            "exploration_prompts": [],
+            "lost_user": False,
+        }
+
+    # Missing budget, but the user intent is actionable (use-case + specificity).
+    # We proceed and let the build pipeline assume a reasonable default budget.
+    if budget is None and has_use and not lost and (n >= 28 or part_intent):
+        return {
+            "sufficient": True,
+            "reason": "No budget was given — proceeding with a reasonable default budget assumption.",
             "questions": [],
             "exploration_prompts": [],
             "lost_user": False,

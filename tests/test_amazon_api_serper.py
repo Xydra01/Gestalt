@@ -5,18 +5,14 @@ import os
 from unittest.mock import patch
 
 
-class _FakeResp:
-    def __init__(self, body: str):
-        self._body = body.encode("utf-8")
+class _FakeRequestsResp:
+    def __init__(self, status_code: int, body: dict):
+        self.status_code = status_code
+        self._body = body
+        self.text = json.dumps(body)
 
-    def read(self) -> bytes:
+    def json(self):
         return self._body
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
 
 
 def test_get_amazon_price_uses_serper_when_rainforest_missing(monkeypatch) -> None:
@@ -35,10 +31,13 @@ def test_get_amazon_price_uses_serper_when_rainforest_missing(monkeypatch) -> No
         ]
     }
 
-    with patch("amazon_api.urlopen", return_value=_FakeResp(json.dumps(serper_payload))) as u:
+    with patch(
+        "amazon_api.requests.post",
+        return_value=_FakeRequestsResp(200, serper_payload),
+    ) as p:
         out = get_amazon_price("Ryzen 5 7600X", amazon_key=None)
 
-    assert u.called
+    assert p.called
     assert out is not None
     assert out["source"] == "amazon"
     assert out["url"].startswith("https://www.amazon.com/")
@@ -53,10 +52,10 @@ def test_get_amazon_price_prefers_rainforest_when_available(monkeypatch) -> None
     monkeypatch.setenv("SERPER_API_KEY", "serper-key")
 
     with patch("amazon_api.search_amazon", return_value=(123, "T", "U")) as s:
-        with patch("amazon_api.urlopen") as u:
+        with patch("amazon_api.requests.post") as p:
             out = get_amazon_price("X", amazon_key=None)
 
     assert s.called
-    assert not u.called  # should not hit Serper/urlopen when Rainforest works
+    assert not p.called  # should not hit Serper when Rainforest works
     assert out == {"source": "amazon", "price": 123, "title": "T", "url": "U"}
 

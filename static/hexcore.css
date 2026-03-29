@@ -217,6 +217,7 @@
 
 .hx-panel-glow {
   box-shadow: 0 0 40px rgba(196, 181, 253, 0.08);
+  animation: hx-panel-breathe 5s ease-in-out infinite;
 }
 
 /* Terminal */
@@ -542,4 +543,199 @@
   color: var(--hx-text);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* --- Motion tokens (Animate.css + our layers) --- */
+.hx-motion {
+  --animate-duration: 0.85s;
+  --animate-delay: 0.12s;
+}
+
+.hx-animate-delay-1 {
+  animation-delay: 0.18s;
+  animation-fill-mode: both;
+}
+
+.hx-magic-delay {
+  animation-delay: 0.4s;
+}
+
+/* Hover.css needs transform targets that aren’t inline-only */
+.hx-btn.hvr-grow,
+.hx-btn.hvr-float,
+.hx-btn.hvr-pop {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.hx-btn.hvr-float {
+  box-shadow: none;
+}
+
+/* Soft animated title glow (works with Animate.css entrance) */
+@keyframes hx-glow-pulse {
+  0%,
+  100% {
+    text-shadow: var(--hx-lavender-glow);
+    filter: brightness(1);
+  }
+  50% {
+    text-shadow:
+      0 0 32px rgba(196, 181, 253, 0.55),
+      0 0 56px rgba(249, 168, 212, 0.22);
+    filter: brightness(1.06);
+  }
+}
+
+.hx-text-glow-pulse {
+  animation: hx-glow-pulse 3.2s ease-in-out infinite;
+}
+
+/* Status badge subtle pulse while agents work */
+@keyframes hx-badge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(196, 181, 253, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 14px 2px rgba(196, 181, 253, 0.25);
+  }
+}
+
+body.hx-agents-busy .hx-status-glow {
+  animation: hx-badge-pulse 1.4s ease-in-out infinite;
+}
+
+/* Chat panel: operator input — overlay does not block the crew log */
+.hx-chat-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.hx-busy-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  border-radius: inherit;
+  background: rgba(8, 8, 12, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: inset 0 0 0 1px rgba(196, 181, 253, 0.12);
+}
+
+.hx-busy-overlay[hidden] {
+  display: none !important;
+}
+
+.hx-busy-card {
+  text-align: center;
+  max-width: 280px;
+}
+
+.hx-busy-spinner {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: conic-gradient(from 120deg, var(--hx-lavender), var(--hx-mint), var(--hx-rose), var(--hx-lavender));
+  mask: radial-gradient(farthest-side, transparent 58%, #000 60%);
+  -webkit-mask: radial-gradient(farthest-side, transparent 58%, #000 60%);
+  animation: hx-spin 0.95s linear infinite;
+  filter: drop-shadow(0 0 12px rgba(196, 181, 253, 0.45));
+}
+
+.hx-busy-spinner-sm {
+  width: 28px;
+  height: 28px;
+  margin: 0 12px 0 0;
+  flex-shrink: 0;
+}
+
+@keyframes hx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hx-busy-label {
+  font-family: var(--hx-font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  color: var(--hx-lavender);
+  margin: 0 0 6px;
+}
+
+.hx-busy-hint {
+  font-size: 0.78rem;
+  color: var(--hx-text-muted);
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* Clarify + ELI5 controls while crew runs */
+body.hx-agents-busy #clarify-answers,
+body.hx-agents-busy #continue-clarify-btn {
+  opacity: 0.55;
+}
+
+.hx-btn-loading {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.hx-eli5-loading {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+@keyframes hx-panel-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 40px rgba(196, 181, 253, 0.08),
+      0 0 0 1px rgba(196, 181, 253, 0.04);
+  }
+  50% {
+    box-shadow:
+      0 0 52px rgba(196, 181, 253, 0.14),
+      0 0 0 1px rgba(196, 181, 253, 0.08);
+  }
+}
+
+/* Terminal: subtle border glow while streaming (optional hook via JS — class on body) */
+body.hx-agents-busy .hx-terminal {
+  box-shadow:
+    0 0 0 1px rgba(134, 239, 172, 0.18),
+    0 0 28px rgba(134, 239, 172, 0.08);
+  transition: box-shadow 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hx-motion,
+  .hx-root {
+    --animate-duration: 0.01ms;
+  }
+
+  .hx-text-glow-pulse,
+  body.hx-agents-busy .hx-status-glow,
+  .hx-panel-glow {
+    animation: none !important;
+  }
+
+  .hx-busy-spinner,
+  .hx-busy-spinner-sm {
+    animation: hx-spin 1.4s linear infinite;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
 }

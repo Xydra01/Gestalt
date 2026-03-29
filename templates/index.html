@@ -7,22 +7,27 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,300..700;1,300..700&family=Syne:wght@400..800&family=Syne+Mono&display=swap" rel="stylesheet" />
+  <!-- Animation libraries: Animate.css, Hover.css, AnimXYZ (composable), Magic.css -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hover.css@2.3.2/css/hover-min.css" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@animxyz/core@0.6.6/dist/animxyz.min.css" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://unpkg.com/magic.css@1.4.8/dist/magic.min.css" crossorigin="anonymous" />
   <link rel="stylesheet" href="{{ url_for('static', filename='hexcore.css') }}" />
 </head>
-<body class="hx-root hx-layout">
+<body class="hx-root hx-layout hx-motion">
   <header class="hx-hero">
     <div class="hx-hero-bg" aria-hidden="true"></div>
-    <div class="hx-hero-inner">
+    <div class="hx-hero-inner xyz-in" xyz="fade small stagger-2 duration-3">
       <div class="hx-eyebrow">// GESTALT · PC BUILD CREW</div>
-      <h1 class="hx-display hx-h1">
-        <span class="hx-text-lavender hx-glow-lavender">GESTALT</span>
+      <h1 class="hx-display hx-h1 animate__animated animate__fadeInDown">
+        <span class="hx-text-lavender hx-glow-lavender hx-text-glow-pulse">GESTALT</span>
         <br />
         BUILD <span class="hx-text-muted" style="text-shadow: none">CHAT</span>
       </h1>
       <p class="hx-body-lg hx-text-muted" style="max-width: 520px; margin-top: 14px">
         Describe your budget and use case. We may ask a quick follow-up if we need more detail—then the crew returns a parts list and analysis.
       </p>
-      <div class="hx-hero-pills">
+      <div class="hx-hero-pills magictime puffIn hx-magic-delay">
         <span class="hx-pill hx-pill-lav">Agents</span>
         <span class="hx-pill hx-pill-mint">Live crew · SSE</span>
         <span class="hx-pill hx-pill-rose">Flask</span>
@@ -31,16 +36,26 @@
   </header>
 
   <main class="hx-main hx-stack">
-    <section class="hx-panel hx-panel-glow" aria-labelledby="chat-heading">
+    <section
+      class="hx-panel hx-panel-glow hx-chat-panel hx-busy-anchor animate__animated animate__fadeInUp hx-animate-delay-1"
+      aria-labelledby="chat-heading"
+    >
+      <div id="busy-overlay" class="hx-busy-overlay" hidden aria-hidden="true">
+        <div class="hx-busy-card" role="status" aria-live="polite">
+          <div class="hx-busy-spinner" aria-hidden="true"></div>
+          <p class="hx-busy-label animate__animated animate__pulse animate__infinite">Crew is working…</p>
+          <p class="hx-busy-hint">You can watch the log below — chat is paused until this run finishes.</p>
+        </div>
+      </div>
       <div class="hx-label" id="chat-heading" style="margin-bottom: 14px">Operator input</div>
       <div class="hx-field">
         <label class="hx-field-label" for="prompt">Build request</label>
         <textarea id="prompt" class="hx-input" rows="4" placeholder="e.g. 1440p gaming, quiet ITX, $1,400 cap…">Build me a gaming PC for $1000</textarea>
       </div>
       <div class="hx-row" style="margin-top: 18px">
-        <button type="button" class="hx-btn hx-btn-primary" id="build-btn">Run build</button>
-        <button type="button" class="hx-btn hx-btn-ghost hx-btn-sm" id="clear-btn" title="Clear log and results">Clear</button>
-        <span class="hx-badge hx-badge-lavender" id="status-badge">Idle</span>
+        <button type="button" class="hx-btn hx-btn-primary hvr-grow" id="build-btn">Run build</button>
+        <button type="button" class="hx-btn hx-btn-ghost hx-btn-sm hvr-float" id="clear-btn" title="Clear log and results">Clear</button>
+        <span class="hx-badge hx-badge-lavender hx-status-glow" id="status-badge">Idle</span>
       </div>
     </section>
 
@@ -66,6 +81,29 @@
   <script>
     var gestaltOriginalPrompt = "";
     var lastBuildPayload = null;
+
+    function setAgentsBusy(busy) {
+      document.body.classList.toggle("hx-agents-busy", busy);
+      var overlay = document.getElementById("busy-overlay");
+      var panel = document.querySelector(".hx-chat-panel");
+      if (panel) {
+        panel.setAttribute("aria-busy", busy ? "true" : "false");
+      }
+      if (overlay) {
+        overlay.hidden = !busy;
+        overlay.setAttribute("aria-hidden", busy ? "false" : "true");
+      }
+      ["prompt", "build-btn", "clear-btn"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.disabled = busy;
+      });
+      var ca = document.getElementById("clarify-answers");
+      if (ca) ca.disabled = busy;
+      var cc = document.getElementById("continue-clarify-btn");
+      if (cc) cc.disabled = busy;
+      var eli5 = document.getElementById("eli5-btn");
+      if (eli5) eli5.disabled = busy;
+    }
 
     function formatClarifyPanel(data) {
       const qs = Array.isArray(data.questions) ? data.questions : [];
@@ -101,7 +139,7 @@
         '<label class="hx-field-label" for="clarify-answers">Your answers</label>' +
         '<textarea id="clarify-answers" class="hx-input" rows="4" placeholder="Budget, main use (gaming, work, creative…), and any must-haves."></textarea>' +
         '<div class="hx-row" style="margin-top:14px">' +
-        '<button type="button" class="hx-btn hx-btn-primary" id="continue-clarify-btn" onclick="gestaltRunContinue()">Continue with build</button>' +
+        '<button type="button" class="hx-btn hx-btn-primary hvr-grow" id="continue-clarify-btn" onclick="gestaltRunContinue()">Continue with build</button>' +
         "</div></div>"
       );
     }
@@ -356,7 +394,7 @@
         lastBuildPayload = { build: data.build, analysis: data.analysis || null };
         html +=
           '<div class="hx-row" style="margin-top:18px">' +
-          '<button type="button" class="hx-btn hx-btn-ghost" id="eli5-btn" onclick="gestaltExplainEli5()">Explain Like I\'m a Beginner</button>' +
+          '<button type="button" class="hx-btn hx-btn-ghost hvr-pop" id="eli5-btn" onclick="gestaltExplainEli5()">Explain Like I\'m a Beginner</button>' +
           "</div>" +
           '<div id="eli5-panel" style="display:none" class="hx-eli5-wrap" aria-live="polite"></div>';
         resultEl.innerHTML = html;
@@ -373,13 +411,20 @@
 
     async function gestaltExplainEli5() {
       const panel = document.getElementById("eli5-panel");
+      const eli5Btn = document.getElementById("eli5-btn");
       if (!panel || !lastBuildPayload || !lastBuildPayload.build) {
         return;
       }
+      if (eli5Btn) {
+        eli5Btn.disabled = true;
+        eli5Btn.classList.add("hx-btn-loading");
+      }
       panel.style.display = "block";
       panel.innerHTML =
-        '<div class="hx-eli5-title">📖 Generating beginner-friendly explanation…</div>' +
-        '<p class="hx-body" style="color:var(--hx-text-muted)">One moment.</p>';
+        '<div class="hx-eli5-loading animate__animated animate__fadeIn">' +
+        '<div class="hx-busy-spinner hx-busy-spinner-sm" aria-hidden="true"></div>' +
+        '<div><div class="hx-eli5-title">📖 Generating beginner-friendly explanation…</div>' +
+        '<p class="hx-body" style="margin:0;color:var(--hx-text-muted)">One moment.</p></div></div>';
       try {
         const res = await fetch("/explain", {
           method: "POST",
@@ -414,6 +459,11 @@
           '<p class="hx-alert hx-alert-danger" style="margin:0">' +
           escapeHtml(e.message) +
           "</p>";
+      } finally {
+        if (eli5Btn) {
+          eli5Btn.disabled = false;
+          eli5Btn.classList.remove("hx-btn-loading");
+        }
       }
     }
 
@@ -444,6 +494,7 @@
       }
       setBadge("Working", "lavender");
       btn.disabled = true;
+      setAgentsBusy(true);
       try {
         const response = await fetch("/build/stream", {
           method: "POST",
@@ -522,6 +573,7 @@
         setBadge("Offline", "peach");
       } finally {
         btn.disabled = false;
+        setAgentsBusy(false);
       }
     }
 

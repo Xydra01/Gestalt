@@ -582,31 +582,43 @@
           while ((sep = buffer.indexOf("\n\n")) !== -1) {
             const block = buffer.slice(0, sep);
             buffer = buffer.slice(sep + 2);
-            const dataLine = block.split("\n").find(function (line) {
-              return line.indexOf("data: ") === 0;
-            });
-            if (!dataLine) continue;
-            let obj;
-            try {
-              obj = JSON.parse(dataLine.slice(6));
-            } catch (_) {
-              continue;
+            // Proper SSE parsing: supports "event:" + multi-line "data:".
+            // Ignore keepalive comment blocks (":" lines).
+            const lines = block.split("\n").map(function (l) { return l.replace(/\r$/, ""); });
+            let ev = "";
+            const dataLines = [];
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (!line) continue;
+              if (line[0] === ":") continue;
+              if (line.indexOf("event:") === 0) {
+                ev = line.slice(6).trim();
+              } else if (line.indexOf("data:") === 0) {
+                dataLines.push(line.slice(5).trimStart());
+              }
             }
-            if (obj.event === "trace" && obj.entry) {
-              logEl.textContent += formatTraceEntry(obj.entry) + "\n\n";
+            if (!ev && !dataLines.length) continue;
+            const dataText = dataLines.join("\n");
+            let payload = null;
+            if (dataText) {
+              try { payload = JSON.parse(dataText); } catch (_) { payload = dataText; }
+            }
+            if (ev === "trace" && payload) {
+              logEl.textContent += formatTraceEntry(payload) + "\n\n";
               logEl.scrollTop = logEl.scrollHeight;
-            } else if (obj.event === "clarify" && obj.data) {
-              gestaltOriginalPrompt = obj.data.original_prompt || gestaltOriginalPrompt;
+            } else if (ev === "clarify" && payload) {
+              gestaltOriginalPrompt = payload.original_prompt || gestaltOriginalPrompt;
               logEl.textContent =
-                "— Intake —\n" + (obj.data.reason || "More detail needed.") + "\n\n";
-              resultEl.innerHTML = formatClarifyPanel(obj.data);
+                "— Intake —\n" + (payload.reason || "More detail needed.") + "\n\n";
+              resultEl.innerHTML = formatClarifyPanel(payload);
               setBadge("Need info", "lavender");
-            } else if (obj.event === "complete" && obj.data) {
-              applyBuildResult(obj.data);
-            } else if (obj.event === "error") {
+            } else if (ev === "complete" && payload) {
+              applyBuildResult(payload);
+            } else if (ev === "error") {
+              const msg = payload && payload.message ? payload.message : "Unknown error";
               resultEl.innerHTML =
                 '<div class="hx-alert hx-alert-danger">' +
-                escapeHtml(obj.message || "Unknown error") +
+                escapeHtml(msg) +
                 "</div>";
               setBadge("Failed", "peach");
             }

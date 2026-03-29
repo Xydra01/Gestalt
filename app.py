@@ -19,6 +19,29 @@ from price_comparison import enrich_crew_payload_with_pricing
 _ROOT = Path(__file__).resolve().parent
 
 
+def _sse_pack(*, event: str | None = None, data: object | None = None) -> str:
+    """
+    Pack a single Server-Sent Event message.
+
+    We use the SSE fields (``event:``, ``data:``) rather than embedding an ``event`` key inside JSON,
+    so standard SSE clients and proxies behave correctly.
+    """
+    lines: list[str] = []
+    if event:
+        lines.append(f"event: {event}")
+    if data is not None:
+        payload = json.dumps(data, default=str)
+        # SSE allows multi-line data by repeating data: lines.
+        for chunk in payload.splitlines() or [""]:
+            lines.append(f"data: {chunk}")
+    return "\n".join(lines) + "\n\n"
+
+
+def _sse_comment(text: str = "ping") -> str:
+    """SSE keepalive comment line (ignored by EventSource)."""
+    return f": {text}\n\n"
+
+
 def _resolve_merged_prompt(body: dict) -> tuple[str, str]:
     """
     Return (merged_prompt, original_prompt_for_session).
@@ -96,6 +119,13 @@ def build_stream():
         return jsonify({"error": "Missing or empty prompt"}), 400
 
     def generate():
+        """
+        SSE generator for the UI.
+
+        Emits spec-compliant SSE frames (``event:`` + ``data:``) so EventSource and intermediaries
+        can handle the stream correctly. Also emits occasional keepalive comments to prevent idle
+        timeouts on some proxies.
+        """
         intake = analyze_build_intake(merged)
         if not intake.get("sufficient"):
             clarify = {
@@ -106,22 +136,15 @@ def build_stream():
                 "original_prompt": original,
                 "merged_prompt": merged,
             }
-            yield "data: " + json.dumps({"event": "clarify", "data": clarify}, default=str) + "\n\n"
-            yield (
-                "data: "
-                + json.dumps(
-                    {
-                        "event": "complete",
-                        "data": {
-                            "success": False,
-                            "needs_clarification": True,
-                            "intake": intake,
-                            "original_prompt": original,
-                        },
-                    },
-                    default=str,
-                )
-                + "\n\n"
+            yield _sse_pack(event="clarify", data=clarify)
+            yield _sse_pack(
+                event="complete",
+                data={
+                    "success": False,
+                    "needs_clarification": True,
+                    "intake": intake,
+                    "original_prompt": original,
+                },
             )
             return
 
@@ -140,30 +163,42 @@ def build_stream():
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
+        # Keepalive so proxies/browsers don't think the connection stalled.
+        idle_ticks = 0
         while t.is_alive() or not q.empty():
             try:
                 item = q.get(timeout=0.2)
             except queue.Empty:
+                idle_ticks += 1
+                if idle_ticks >= 25:  # ~5s (25 * 0.2)
+                    idle_ticks = 0
+                    yield _sse_comment("keepalive")
                 continue
-            yield "data: " + json.dumps(item, default=str) + "\n\n"
+            idle_ticks = 0
+            # Worker pushes items shaped like {"event": "...", ...}. Convert to proper SSE fields.
+            if isinstance(item, dict):
+                ev = item.get("event")
+                if ev == "trace":
+                    yield _sse_pack(event="trace", data=item.get("entry"))
+                    continue
+                if ev == "clarify":
+                    yield _sse_pack(event="clarify", data=item.get("data"))
+                    continue
+                if ev == "complete":
+                    yield _sse_pack(event="complete", data=item.get("data"))
+                    continue
+                if ev == "error":
+                    yield _sse_pack(event="error", data={"message": item.get("message")})
+                    continue
+            # Fallback for unexpected shapes
+            yield _sse_pack(event="trace", data=item)
         t.join(timeout=600)
         if result["err"]:
-            yield "data: " + json.dumps({"event": "error", "message": result["err"]}, default=str) + "\n\n"
+            yield _sse_pack(event="error", data={"message": result["err"]})
         elif result["payload"] is not None:
-            yield (
-                "data: "
-                + json.dumps({"event": "complete", "data": result["payload"]}, default=str)
-                + "\n\n"
-            )
+            yield _sse_pack(event="complete", data=result["payload"])
         else:
-            yield (
-                "data: "
-                + json.dumps(
-                    {"event": "error", "message": "Build finished without a result."},
-                    default=str,
-                )
-                + "\n\n"
-            )
+            yield _sse_pack(event="error", data={"message": "Build finished without a result."})
 
     return Response(
         stream_with_context(generate()),

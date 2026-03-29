@@ -1,8 +1,10 @@
 """
+
+─── Explicit Rule Registry ───────────────────────────────────────────────────
+These are the load-bearing compatibility rules for the validation engine.
+Encoded as data so they are auditable without reading function logic.
 Deterministic compatibility checks for a PC building assistant.
 
-Pure Python: no network or LLM calls. Callers are expected to pass dicts
-with the documented keys (demo code assumes keys exist).
 """
 
 from __future__ import annotations

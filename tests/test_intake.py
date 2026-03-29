@@ -49,6 +49,12 @@ def test_heuristic_insufficient_vague(_mock: object) -> None:
 
 
 @patch("intake._llm_intake", return_value=None)
+def test_heuristic_missing_budget_but_actionable_proceeds(_mock: object) -> None:
+    out = analyze_build_intake("Build me a gaming PC with an RTX 4070")
+    assert out["sufficient"] is True
+
+
+@patch("intake._llm_intake", return_value=None)
 def test_heuristic_lost_user_gets_exploration(_mock: object) -> None:
     out = analyze_build_intake("idk what to buy help")
     assert out["sufficient"] is False

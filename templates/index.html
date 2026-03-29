@@ -159,6 +159,7 @@
         '<textarea id="clarify-answers" class="hx-input" rows="4" placeholder="Budget, main use (gaming, work, creative…), and any must-haves."></textarea>' +
         '<div class="hx-row" style="margin-top:14px">' +
         '<button type="button" class="hx-btn hx-btn-primary hvr-grow" id="continue-clarify-btn" onclick="gestaltRunContinue()">Continue with build</button>' +
+        '<button type="button" class="hx-btn hx-btn-ghost hvr-float" id="build-anyway-btn" onclick="gestaltRunAnyway()">Build anyway (assume ~$1000)</button>' +
         "</div></div>"
       );
     }
@@ -341,7 +342,10 @@
         return "▸ Request: " + truncate(entry.user_input, 200);
       }
       if (k === "phase" && entry.phase) {
-        return "▸ Phase «" + escapeHtml(String(entry.phase)) + "» " + (entry.status || "");
+        var phaseName = String(entry.phase);
+        if (phaseName === "analysis") phaseName = "Understanding your request";
+        if (phaseName === "recommendation") phaseName = "Choosing parts";
+        return "▸ " + escapeHtml(phaseName) + (entry.status ? " — " + escapeHtml(String(entry.status)) : "");
       }
       if (k === "llm_task_output") {
         const agent = entry.agent != null ? String(entry.agent) : "agent";
@@ -368,16 +372,24 @@
       }
       if (k === "validation") {
         const ok = entry.passed === true;
-        const errBits = Array.isArray(entry.errors)
-          ? entry.errors
-              .map(function (e) {
-                return e && e.message ? String(e.message) : JSON.stringify(e);
-              })
-              .join("; ")
-          : "";
-        return (ok ? "✓ Validation passed" : "✗ Validation failed") +
-          " (attempt " + String(entry.attempt) + ")" +
-          (errBits ? "\n  " + escapeHtml(truncate(errBits, 500)) : "");
+        const errs = Array.isArray(entry.errors) ? entry.errors : [];
+        if (ok) {
+          return "✓ Compatibility check: everything fits together (attempt " + String(entry.attempt) + ").";
+        }
+        if (errs.length) {
+          const first = errs[0] || {};
+          const msg = first.message ? String(first.message) : "One or more parts didn't match.";
+          const fix = first.fix ? String(first.fix) : "Pick a different compatible part and try again.";
+          return (
+            "✗ Compatibility check: we found a mismatch (attempt " +
+            String(entry.attempt) +
+            ").\n  " +
+            escapeHtml(truncate(msg, 360)) +
+            "\n  Fix: " +
+            escapeHtml(truncate(fix, 260))
+          );
+        }
+        return "✗ Compatibility check failed (attempt " + String(entry.attempt) + "). Retrying with different parts…";
       }
       return escapeHtml(truncate(JSON.stringify(entry), 400));
     }
@@ -489,14 +501,29 @@
     function gestaltRunContinue() {
       const answersEl = document.getElementById("clarify-answers");
       const answers = answersEl ? answersEl.value.trim() : "";
+      const op = gestaltOriginalPrompt || document.getElementById("prompt").value.trim();
       if (!answers) {
+        // If the user doesn't want to engage, proceed with a reasonable default.
+        void runBuildStreamRequest({
+          prompt: (op || "") + "\n\nIf budget is not provided, assume around $1000 (parts only).",
+        });
         return;
       }
-      const op = gestaltOriginalPrompt || document.getElementById("prompt").value.trim();
       void runBuildStreamRequest({
         original_prompt: op,
         clarification_answers: answers,
       });
+    }
+
+    function gestaltRunAnyway() {
+      const op = gestaltOriginalPrompt || document.getElementById("prompt").value.trim();
+      const answersEl = document.getElementById("clarify-answers");
+      const answers = answersEl ? answersEl.value.trim() : "";
+      const merged =
+        (op || "") +
+        (answers ? "\n\nAdditional details from you:\n" + answers : "") +
+        "\n\nIf budget is not provided, assume around $1000 (parts only).";
+      void runBuildStreamRequest({ prompt: merged });
     }
 
     async function runBuildStreamRequest(body) {

@@ -3,6 +3,13 @@ Pydantic schemas for request/response validation.
 
 These are intentionally lightweight: we validate the HTTP boundary so the system fails fast with
 clear errors, without trying to fully type every internal payload field.
+
+Feature map (master plan → code):
+- `BuildRequest`: accepted by `/build` and `/build/stream` in `app.py`
+- `ExplainRequest`: accepted by `/explain` in `app.py` (supports optional `agent_trace`)
+
+Design intent:
+Unknown fields are ignored (`extra="ignore"`) so the UI can evolve without breaking the API.
 """
 
 from __future__ import annotations

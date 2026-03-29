@@ -5,6 +5,16 @@ These are the load-bearing compatibility rules for the validation engine.
 Encoded as data so they are auditable without reading function logic.
 Deterministic compatibility checks for a PC building assistant.
 
+Feature map (master plan → code):
+- Socket geometry: `SOCKET_MISMATCH` (CPU socket ↔ motherboard socket)
+- Memory protocol: `RAM_GEN_MISMATCH` (RAM DDR gen ↔ motherboard DDR support)
+- Electrical headroom: `INSUFFICIENT_POWER` (estimated load + hardcoded 150W margin)
+- Volumetric clearance: `GPU_CLEARANCE_FAIL` (GPU length ↔ case max GPU length)
+
+Notes:
+- This module contains no LLM code and no network calls by design.
+- Error objects include a short human message and a `fix` hint for the retry/solver logic in `crew.py`.
+
 """
 
 from __future__ import annotations

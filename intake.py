@@ -2,6 +2,13 @@
 Pre-build intake: decide if the user prompt is specific enough to run the crew, or ask for clarification.
 
 Uses Gemini when an API key is available; otherwise heuristics based on :mod:`crew` helpers.
+
+Feature map (master plan → code):
+- "Smart intake & clarification": `analyze_build_intake()` returns either
+  - `sufficient=true` (pipeline can run), or
+  - `sufficient=false` with questions for the UI (clarify path in `app.py`).
+- Softlock avoidance (user doesn't engage): `_heuristic_intake()` can proceed without a budget
+  when the prompt is still actionable; the crew then assumes a reasonable default budget.
 """
 
 from __future__ import annotations

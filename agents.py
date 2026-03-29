@@ -1,4 +1,15 @@
-"""CrewAI agent definitions for Gestalt (PC Builder AI)."""
+"""
+CrewAI agent definitions for Gestalt (PC Builder AI).
+
+Feature map (master plan → code):
+- Analysis Agent: `analysis_agent()` emits the structured (budget/use-case/constraints) JSON.
+- Recommendation Agent: `recommendation_agent()` emits selected part *IDs* (catalog grounded).
+- Model routing: `resolve_llm()` picks Gemini via CrewAI's LLM wrapper when keys exist.
+
+Reality note:
+- Validation is not an LLM agent. The deterministic rules live in `compatibility_checker.py` and
+  are called by `crew.py` after recommendation.
+"""
 
 from __future__ import annotations
 

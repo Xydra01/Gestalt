@@ -1,4 +1,19 @@
-"""Gestalt PC build crew — analysis, recommendation (with retries), deterministic validation."""
+"""
+Gestalt PC build crew — analysis, recommendation, deterministic validation, and conflict recovery.
+
+Feature map (master plan → code):
+- Probabilistic layer (LLM): analysis + part-ID recommendation via CrewAI agents in `agents.py`
+- Deterministic validator ("Math validates"): `compatibility_checker.validate_build`
+- Hard constraints: `extract_hard_part_constraints` + `apply_hard_constraints_to_build`
+- Depth feature (bounded constraint satisfaction): `generate_candidates_for_slot` +
+  `find_compatible_build_from_candidates` to pick the first compatible combination
+- Confidence scores: `add_confidence_scores` adds per-part `{confidence: {score, reasons}}`
+- Streaming trace: trace entries are pushed to an optional SSE queue (see `app.py`)
+
+Reality note:
+There are two LLM agents (analysis + recommendation). Validation and the combo solver are
+deterministic Python, not separate LLM agents.
+"""
 
 from __future__ import annotations
 

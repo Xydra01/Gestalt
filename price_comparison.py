@@ -1,8 +1,17 @@
 """
-Combine live Amazon (Rainforest) and eBay (ScrapingBee) prices for PC parts.
+Combine live Amazon (Rainforest) and market pricing (SerpApi) for PC parts.
 
 Uses :func:`amazon_api.get_amazon_price` and :func:`ebay_api.get_ebay_price`.
 All entry points are defensive: exceptions from dependencies are swallowed.
+
+Feature map (master plan → code):
+- Live pricing enrichment: :func:`enrich_crew_payload_with_pricing`
+- Per-part comparison blob: :func:`enrich_build_with_prices` adds ``price_comparison`` on slots
+- Rollups displayed in UI: :func:`rollup_pricing`
+
+Reality note:
+- The field name ``ebay`` is kept for API/UI compatibility, but the current implementation
+  in `ebay_api.py` uses SerpApi Google Shopping rather than scraping eBay HTML.
 """
 
 from __future__ import annotations

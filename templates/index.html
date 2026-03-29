@@ -109,6 +109,12 @@
   </footer>
 
   <script>
+    // Feature map (master plan → UI code):
+    // - Streaming trace: `runBuildStreamRequest()` consumes `/build/stream` SSE and renders the log.
+    // - Clarify path: server emits `event: clarify`, UI renders `formatClarifyPanel()` and can call
+    //   `gestaltRunContinue()` (or `gestaltRunAnyway()` to avoid a "clarify forever" softlock).
+    // - Final build: `event: complete` renders the parts manifest and enables ELI5.
+    // - ELI5: `gestaltExplainEli5()` calls `/explain` with the last build payload + trace context.
     var gestaltOriginalPrompt = "";
     var lastBuildPayload = null;
 

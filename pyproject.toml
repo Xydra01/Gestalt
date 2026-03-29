@@ -44,4 +44,5 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "integration: needs network / API keys; use -m \"not integration\" to skip",
+    "e2e: full HTTP pipeline tests (mocked crew/ELI5; no network)",
 ]

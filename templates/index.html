@@ -20,7 +20,7 @@
         BUILD <span class="hx-text-muted" style="text-shadow: none">CHAT</span>
       </h1>
       <p class="hx-body-lg hx-text-muted" style="max-width: 520px; margin-top: 14px">
-        Describe your budget and use case. The crew returns a parts list and a short analysis — pastel-neon test UI using a HEXCORE-style token set.
+        Describe your budget and use case. We may ask a quick follow-up if we need more detail—then the crew returns a parts list and analysis.
       </p>
       <div class="hx-hero-pills">
         <span class="hx-pill hx-pill-lav">Agents</span>
@@ -64,6 +64,47 @@
   </main>
 
   <script>
+    var gestaltOriginalPrompt = "";
+
+    function formatClarifyPanel(data) {
+      const qs = Array.isArray(data.questions) ? data.questions : [];
+      const ex = Array.isArray(data.exploration_prompts) ? data.exploration_prompts : [];
+      let list = "";
+      if (qs.length) {
+        list +=
+          '<ul style="margin:8px 0 12px 18px;padding:0">' +
+          qs.map(function (q) {
+            return "<li>" + escapeHtml(q) + "</li>";
+          }).join("") +
+          "</ul>";
+      }
+      let exBlock = "";
+      if (ex.length) {
+        exBlock =
+          '<div class="hx-label" style="margin-top:12px">Ideas to narrow it down</div><ul style="margin:8px 0 12px 18px;padding:0">' +
+          ex
+            .map(function (q) {
+              return "<li>" + escapeHtml(q) + "</li>";
+            })
+            .join("") +
+          "</ul>";
+      }
+      return (
+        '<div class="hx-panel hx-panel-glow" style="padding:16px 18px">' +
+        '<div class="hx-label" style="margin-bottom:8px">A bit more detail helps</div>' +
+        '<p class="hx-body" style="margin:0 0 12px 0;color:var(--hx-text-muted)">' +
+        escapeHtml(data.reason || "Add a few details so we can recommend parts.") +
+        "</p>" +
+        list +
+        exBlock +
+        '<label class="hx-field-label" for="clarify-answers">Your answers</label>' +
+        '<textarea id="clarify-answers" class="hx-input" rows="4" placeholder="Budget, main use (gaming, work, creative…), and any must-haves."></textarea>' +
+        '<div class="hx-row" style="margin-top:14px">' +
+        '<button type="button" class="hx-btn hx-btn-primary" id="continue-clarify-btn" onclick="gestaltRunContinue()">Continue with build</button>' +
+        "</div></div>"
+      );
+    }
+
     function formatRowPrice(part) {
       const pc = part.price_comparison;
       let p = part.price;
@@ -284,6 +325,10 @@
     }
 
     function applyBuildResult(data) {
+      if (data && data.needs_clarification) {
+        setBadge("Need info", "lavender");
+        return;
+      }
       const logEl = document.getElementById("log");
       const resultEl = document.getElementById("result");
       const summary = formatAnalysisSummary(data.analysis);
@@ -318,21 +363,38 @@
       }
     }
 
-    async function runBuild() {
-      const prompt = document.getElementById("prompt").value;
+    function gestaltRunContinue() {
+      const answersEl = document.getElementById("clarify-answers");
+      const answers = answersEl ? answersEl.value.trim() : "";
+      if (!answers) {
+        return;
+      }
+      const op = gestaltOriginalPrompt || document.getElementById("prompt").value.trim();
+      void runBuildStreamRequest({
+        original_prompt: op,
+        clarification_answers: answers,
+      });
+    }
+
+    async function runBuildStreamRequest(body) {
       const logEl = document.getElementById("log");
       const resultEl = document.getElementById("result");
       const btn = document.getElementById("build-btn");
       logEl.classList.remove("hx-terminal-empty");
-      logEl.textContent = "Connecting to crew stream…\n";
-      resultEl.innerHTML = "";
+      const isContinue = !!(body && body.clarification_answers);
+      if (!isContinue) {
+        logEl.textContent = "Connecting to crew stream…\n";
+        resultEl.innerHTML = "";
+      } else {
+        logEl.textContent += "\n— Continuing —\n";
+      }
       setBadge("Working", "lavender");
       btn.disabled = true;
       try {
         const response = await fetch("/build/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
-          body: JSON.stringify({ prompt }),
+          body: JSON.stringify(body),
         });
         const ct = (response.headers.get("content-type") || "").toLowerCase();
         if (!response.ok) {
@@ -355,7 +417,9 @@
           setBadge("Error", "peach");
           return;
         }
-        logEl.textContent = "";
+        if (!isContinue) {
+          logEl.textContent = "";
+        }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -380,6 +444,12 @@
             if (obj.event === "trace" && obj.entry) {
               logEl.textContent += formatTraceEntry(obj.entry) + "\n\n";
               logEl.scrollTop = logEl.scrollHeight;
+            } else if (obj.event === "clarify" && obj.data) {
+              gestaltOriginalPrompt = obj.data.original_prompt || gestaltOriginalPrompt;
+              logEl.textContent =
+                "— Intake —\n" + (obj.data.reason || "More detail needed.") + "\n\n";
+              resultEl.innerHTML = formatClarifyPanel(obj.data);
+              setBadge("Need info", "lavender");
             } else if (obj.event === "complete" && obj.data) {
               applyBuildResult(obj.data);
             } else if (obj.event === "error") {
@@ -401,7 +471,17 @@
       }
     }
 
+    async function runBuild() {
+      gestaltOriginalPrompt = "";
+      const prompt = document.getElementById("prompt").value.trim();
+      if (!prompt) {
+        return;
+      }
+      await runBuildStreamRequest({ prompt: prompt });
+    }
+
     function clearUi() {
+      gestaltOriginalPrompt = "";
       const logEl = document.getElementById("log");
       logEl.textContent = "Awaiting request…";
       logEl.classList.add("hx-terminal-empty");

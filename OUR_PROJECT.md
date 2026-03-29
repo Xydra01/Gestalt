@@ -34,7 +34,7 @@ The stack is a small **Flask** app (`app.py`) with a modern front end: users sub
 ```text
 Browser → Flask → CrewAI + catalog + compatibility_checker → JSON
                     ↓
-              (optional) Rainforest + ScrapingBee → price_comparison → enriched JSON
+              (optional) Rainforest + SerpApi → price_comparison → enriched JSON
 ```
 
 ---
@@ -45,7 +45,7 @@ Browser → Flask → CrewAI + catalog + compatibility_checker → JSON
 - **Catalog-grounded recommendations** — Parts chosen by ID from `parts.json`, not hallucinated SKUs.
 - **Deterministic compatibility validation** — CPU/socket, RAM/DDR, PSU headroom, GPU length vs case; structured errors with codes and suggested fixes.
 - **Retry loop on validation failure** — Recommendation task can revise picks using the validator’s error message.
-- **Live dual-retailer pricing** — Amazon via Rainforest; eBay via ScrapingBee (proxies/CAPTCHAs handled by ScrapingBee); graceful degradation if one side or both fail.
+- **Live pricing (optional)** — Amazon via Rainforest (optional Serper fallback); market pricing via SerpApi Google Shopping (legacy “eBay” slot); graceful degradation if one side or both fail.
 - **Pricing rollups** — Per-slot `price_comparison`, totals, and savings estimates for the UI when keys are present.
 - **Streaming build option** — `/build/stream` for progressive agent trace (where wired in the UI).
 - **Hackathon-friendly ops** — `uv` + `pyproject.toml`, pytest tests for core modules, `.env.example` for onboarding.

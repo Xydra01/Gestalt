@@ -1,5 +1,10 @@
 """
 Beginner-friendly (ELI5) explanations for a completed PC build — powered by Gemini when configured.
+
+Feature map (master plan → code):
+- Endpoint: `POST /explain` in `app.py` calls `generate_eli5_explanation`
+- Trace-aware explanations: `_extract_trace_context` derives a compact context from `agent_trace`
+- Degraded mode: raises `Eli5UnavailableError` when no `GEMINI_API_KEY`/`GOOGLE_API_KEY` is set
 """
 
 from __future__ import annotations

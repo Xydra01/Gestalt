@@ -94,7 +94,7 @@ def test_enrich_payload_calls_amazon_and_ebay_live_sources(monkeypatch) -> None:
     the build gains live-looking comparison slots.
     """
     monkeypatch.setenv("RAINFOREST_API_KEY", "rk")
-    monkeypatch.setenv("SCRAPINGBEE_API_KEY", "sk")
+    monkeypatch.setenv("SERPAPI_API_KEY", "sk")
     payload = {
         "success": True,
         "build": {

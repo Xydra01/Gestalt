@@ -1,4 +1,17 @@
-"""Flask web UI for Gestalt PC Builder — crew-backed /build and streaming /build/stream."""
+"""
+Flask web UI for Gestalt PC Builder.
+
+Feature map (master plan → code):
+- HTTP API endpoints: ``/build``, ``/build/stream`` (SSE), ``/explain`` (ELI5)
+- Ops endpoints: ``/healthz``, ``/version``, ``/metrics``
+- Request validation: Pydantic models in `schemas.py` (BuildRequest / ExplainRequest)
+- SSE framing: spec-compliant ``event:``/``data:`` frames via helpers in `http_utils.py`
+- Pricing enrichment: `price_comparison.enrich_crew_payload_with_pricing` (safe-wrapped)
+
+Design intent:
+This layer is intentionally thin: it validates the HTTP boundary, delegates core logic to
+`crew.py`, and keeps streaming behavior predictable for demos and judge evaluation.
+"""
 
 from __future__ import annotations
 

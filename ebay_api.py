@@ -3,6 +3,10 @@ Live pricing via SerpApi Google Shopping.
 
 Legacy function names are kept for compatibility with callers:
 ``scrape_ebay_price`` and ``get_ebay_price``.
+
+Reality note:
+The output fields still use the label ``source: \"ebay\"`` for UI/backward compatibility, but
+this module does not scrape eBay HTML anymore; it queries SerpApi's Google Shopping engine.
 """
 
 from __future__ import annotations

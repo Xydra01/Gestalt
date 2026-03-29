@@ -1,8 +1,8 @@
 """
-eBay live pricing via SerpApi.
+Live pricing via SerpApi Google Shopping.
 
-Uses SerpApi's eBay engine (``engine=ebay``) and returns a normalized payload
-that `price_comparison.py` can consume without changes.
+Legacy function names are kept for compatibility with callers:
+``scrape_ebay_price`` and ``get_ebay_price``.
 """
 
 from __future__ import annotations
@@ -19,16 +19,16 @@ SERPAPI_API_KEY_ENV = "SERPAPI_API_KEY"
 _SERPAPI_URL = "https://serpapi.com/search.json"
 _REQUEST_TIMEOUT_SEC = 3
 
-_EBAY_SEARCH_BASE = "https://www.ebay.com/sch/i.html"
+_SHOPPING_SEARCH_BASE = "https://www.google.com/search?tbm=shop"
 
 # Note returned by :func:`get_ebay_price` on success.
 EBAY_PRICE_NOTE = "Live eBay price"
 
 
 def ebay_search_url_for_query(query: str) -> str:
-    """Direct link to eBay search results for ``query`` (used as the buy/search URL)."""
-    nkw = quote_plus((query or "").strip())
-    return f"{_EBAY_SEARCH_BASE}?_nkw={nkw}"
+    """Direct link to Google Shopping results for ``query`` (legacy helper name)."""
+    q = quote_plus((query or "").strip())
+    return f"{_SHOPPING_SEARCH_BASE}&q={q}"
 
 
 def _parse_int_price(raw: Any) -> int | None:
@@ -53,35 +53,27 @@ def _parse_int_price(raw: Any) -> int | None:
         return None
 
 
-def _candidate_prices(item: dict[str, Any]) -> tuple[int | None, int | None]:
-    """Return ``(buy_it_now_price, sold_or_fallback_price)`` for one result item."""
-    is_buy_now = bool(item.get("buy_it_now"))
-
-    primary = _parse_int_price(item.get("price"))
-    sold = None
-    for key in ("sold_price", "last_sold_price", "sold", "price_sold"):
-        sold = _parse_int_price(item.get(key))
-        if sold is not None:
-            break
-
-    bin_price = primary if is_buy_now else None
-    sold_or_fallback = sold if sold is not None else primary
-    return bin_price, sold_or_fallback
+def _result_price(item: dict[str, Any]) -> int | None:
+    """Parse first usable numeric price from a Google Shopping result item."""
+    for key in ("extracted_price", "price", "price_raw"):
+        price = _parse_int_price(item.get(key))
+        if isinstance(price, int):
+            return price
+    return None
 
 
 def scrape_ebay_price(query: str, api_key: str) -> int | None:
     """
-    Fetch eBay live price using SerpApi (eBay engine).
+    Fetch live market price using SerpApi Google Shopping.
 
     Request:
     - endpoint: ``https://serpapi.com/search.json``
-    - params: ``api_key``, ``engine=ebay``, ``_nkw=query``, ``no_cache=true``,
-      ``show_only=sold`` (market-value oriented demo mode)
+    - params: ``api_key``, ``engine=google_shopping``, ``q=query``, ``no_cache=true``
     - timeout: 3 seconds
 
     Parsing:
-    - prefers the first ``buy_it_now`` result's price
-    - falls back to the first sold/regular price if no BIN result is present
+    - first parseable price in ``shopping_results``
+    - fallback: ``inline_shopping_results`` then ``organic_results``
 
     Returns:
     - integer price on success, else ``None``
@@ -93,10 +85,9 @@ def scrape_ebay_price(query: str, api_key: str) -> int | None:
 
     params = {
         "api_key": k,
-        "engine": "ebay",
-        "_nkw": q,
+        "engine": "google_shopping",
+        "q": q,
         "no_cache": "true",
-        "show_only": "sold",
     }
 
     try:
@@ -109,25 +100,16 @@ def scrape_ebay_price(query: str, api_key: str) -> int | None:
         data = response.json()
         if not isinstance(data, dict):
             return None
-        organic_results = data.get("organic_results")
-        if not isinstance(organic_results, list) or not organic_results:
-            return None
-
-        # Pass 1: explicit Buy It Now
-        for item in organic_results:
-            if not isinstance(item, dict):
+        for key in ("shopping_results", "inline_shopping_results", "organic_results"):
+            results = data.get(key)
+            if not isinstance(results, list):
                 continue
-            buy_now_price, _ = _candidate_prices(item)
-            if isinstance(buy_now_price, int):
-                return buy_now_price
-
-        # Pass 2: first sold/regular fallback
-        for item in organic_results:
-            if not isinstance(item, dict):
-                continue
-            _, sold_or_fallback = _candidate_prices(item)
-            if isinstance(sold_or_fallback, int):
-                return sold_or_fallback
+            for item in results:
+                if not isinstance(item, dict):
+                    continue
+                price = _result_price(item)
+                if isinstance(price, int):
+                    return price
 
         return None
     except Exception:
@@ -136,7 +118,7 @@ def scrape_ebay_price(query: str, api_key: str) -> int | None:
 
 def get_ebay_price(part_name: str, api_key: str | None = None) -> dict[str, Any] | None:
     """
-    Look up a rough eBay price for a part name using SerpApi + eBay search.
+    Look up live market price for a part name via SerpApi Google Shopping.
 
     Uses ``api_key`` when non-empty; otherwise reads ``SERPAPI_API_KEY``.
     Returns ``None`` on any failure.

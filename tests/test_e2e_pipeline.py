@@ -18,20 +18,42 @@ from parts_catalog import load_parts_catalog
 
 
 def _parse_sse_events(raw: bytes) -> list[dict]:
-    """Parse ``text/event-stream`` body into JSON objects from ``data:`` lines."""
+    """
+    Parse ``text/event-stream`` body into a list of ``{event, data}`` dicts.
+
+    We support proper SSE frames:
+    - optional ``event: <name>``
+    - one or more ``data: <json>`` lines (joined with ``\\n``)
+    - ignore comment keepalives (``: ping``)
+    """
     out: list[dict] = []
     text = raw.decode("utf-8", errors="replace")
     for block in text.split("\n\n"):
         block = block.strip()
         if not block:
             continue
+        ev: str | None = None
+        data_lines: list[str] = []
         for line in block.split("\n"):
-            line = line.strip()
-            if line.startswith("data: "):
-                try:
-                    out.append(json.loads(line[6:]))
-                except json.JSONDecodeError:
-                    pass
+            line = line.rstrip("\r")
+            if not line:
+                continue
+            if line.startswith(":"):
+                continue
+            if line.startswith("event:"):
+                ev = line.split(":", 1)[1].strip() or None
+            elif line.startswith("data:"):
+                data_lines.append(line.split(":", 1)[1].lstrip())
+        if ev is None and not data_lines:
+            continue
+        data_text = "\n".join(data_lines).strip()
+        data_obj: object | None = None
+        if data_text:
+            try:
+                data_obj = json.loads(data_text)
+            except json.JSONDecodeError:
+                data_obj = data_text
+        out.append({"event": ev, "data": data_obj})
     return out
 
 

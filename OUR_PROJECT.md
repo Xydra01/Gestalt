@@ -11,7 +11,7 @@ PC buyers juggle incompatible parts, opaque pricing, and dozens of retailer tabs
 1. **Understands a natural-language build request** (budget, use case, priorities) via **CrewAI** agents backed by a **Gemini** LLM.
 2. **Selects parts from a curated catalog** (`parts.json`) with budget allocation rules (gaming / creative / general).
 3. **Validates the build deterministically** (`compatibility_checker.py`)—socket, DDR generation, PSU wattage margin, GPU vs case clearance—so recommendations are mechanically sound.
-4. **Surfaces live market prices** by comparing **Amazon** (Rainforest API) and **eBay** (ScrapingBee + HTML parse), merging them with list prices in **`price_comparison.py`** so the UI can show per-part and rollup savings when API keys are set in **`.env`**.
+4. **Surfaces live market prices** by comparing **Amazon** (Rainforest API, with optional Serper fallback) and a market-price lookup via **SerpApi Google Shopping** (legacy “eBay” slot), merging them with list prices in **`price_comparison.py`** so the UI can show per-part and rollup savings when API keys are set in **`.env`**.
 
 The stack is a small **Flask** app (`app.py`) with a modern front end: users submit a prompt, get a validated build JSON (and optional streaming agent trace), with pricing enrichment applied safely so a failed retailer API never breaks the response.
 
@@ -27,9 +27,9 @@ The stack is a small **Flask** app (`app.py`) with a modern front end: users sub
 
 - **Data & rules:** `parts_catalog.load_parts_catalog()` reads bundled `parts.json` (or a tiny embedded fallback). `compatibility_checker` implements pure-Python checks; no LLM in the validation path.
 
-- **Live pricing:** `amazon_api.search_amazon` / `get_amazon_price` call Rainforest’s `type=search` endpoint; `ebay_api.scrape_ebay_price` / `get_ebay_price` route eBay search URLs through ScrapingBee (`render_js=false`, short timeout) and parse results with **BeautifulSoup**. `get_all_prices` and `enrich_build_with_prices` normalize success/failure per retailer; `rollup_pricing` aggregates catalog vs live totals and savings for the payload the UI consumes.
+- **Live pricing:** `amazon_api.search_amazon` / `get_amazon_price` call Rainforest’s `type=search` endpoint (with optional Serper fallback); `ebay_api.scrape_ebay_price` / `get_ebay_price` call SerpApi’s `engine=google_shopping` endpoint to get a live market price. `get_all_prices` and `enrich_build_with_prices` normalize success/failure per source; `rollup_pricing` aggregates catalog vs live totals and savings for the payload the UI consumes.
 
-- **Configuration:** Secrets (`GEMINI_API_KEY`, `RAINFOREST_API_KEY`, `SCRAPINGBEE_API_KEY`, etc.) live in **`.env`** (see `.env.example`); `python-dotenv` loads them in `app.py` and `crew.py`.
+- **Configuration:** Secrets (`GEMINI_API_KEY`, `RAINFOREST_API_KEY`, `SERPER_API_KEY`, `SERPAPI_API_KEY`, etc.) live in **`.env`** (see `.env.example`); `python-dotenv` loads them in `app.py` and `crew.py`.
 
 ```text
 Browser → Flask → CrewAI + catalog + compatibility_checker → JSON
@@ -61,9 +61,9 @@ Browser → Flask → CrewAI + catalog + compatibility_checker → JSON
 | **LLM prompts & Crew flow** | *TBD* | `agents.py`, `crew.py` — analysis/recommendation wording, retry behavior, trace size limits |
 | **Compatibility & catalog** | *TBD* | `compatibility_checker.py`, `parts.json` / `parts_catalog.py` — data quality and edge cases |
 | **Amazon + Rainforest** | *TBD* | `amazon_api.py` — search params, parsing first result, error handling |
-| **eBay + ScrapingBee** | *TBD* | `ebay_api.py` — URL shape, BS4 selectors, BIN vs auction heuristics |
+| **“eBay” market pricing + SerpApi** | *TBD* | `ebay_api.py` — SerpApi Google Shopping parse + fallbacks |
 | **Price comparison & rollups** | *TBD* | `price_comparison.py` — `get_all_prices`, enrich payload, rollup math, env keys |
 | **Flask API & front end** | *TBD* | `app.py`, `templates/`, `static/` — `/build`, streaming, UX polish |
 | **Demo & README** | *TBD* | Record demo, fill hackathon submission, verify `.env` for judges |
 
-**Milestone sketch:** (1) End-to-end happy path with catalog-only pricing → (2) Wire Rainforest + ScrapingBee keys → (3) Polish UI and demo script → (4) Freeze `parts.json` and run regression tests.
+**Milestone sketch:** (1) End-to-end happy path with catalog-only pricing → (2) Wire Rainforest + SerpApi keys → (3) Polish UI and demo script → (4) Freeze `parts.json` and run regression tests.

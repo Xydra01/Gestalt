@@ -65,7 +65,7 @@ Expected:
 
 Run the happy path again with and without pricing keys:
 
-- Without `RAINFOREST_API_KEY` / `SCRAPINGBEE_API_KEY`:
+- Without `RAINFOREST_API_KEY` / `SERPAPI_API_KEY`:
   - Prices show as catalog-based; savings rollup still works.
 - With keys set:
   - Effective price uses live retailer data when available and includes buy URLs.

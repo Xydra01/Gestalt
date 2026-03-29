@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextvars
 import json
 import os
+import queue
 import re
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,17 @@ _agent_trace_buffer: contextvars.ContextVar[list[dict[str, Any]] | None] = conte
     "gestalt_agent_trace_buffer", default=None
 )
 _task_trace_phase: contextvars.ContextVar[str] = contextvars.ContextVar("gestalt_task_trace_phase", default="")
+_stream_queue: contextvars.ContextVar[queue.Queue | None] = contextvars.ContextVar(
+    "gestalt_stream_queue", default=None
+)
+
+
+def _emit_trace_step(agent_trace: list[dict[str, Any]]) -> None:
+    """Push the latest trace entry to the optional SSE queue (same thread as crew)."""
+    q = _stream_queue.get()
+    if q is None or not agent_trace:
+        return
+    q.put({"event": "trace", "entry": agent_trace[-1]})
 
 
 def gestalt_crew_task_trace_handler(output: Any) -> None:
@@ -358,15 +370,19 @@ def _trace_task_completed(
 ) -> None:
     """Append one task output dict (used by :func:`gestalt_crew_task_trace_handler` and tests)."""
     agent_trace.append(_task_output_to_trace_dict(output, crew_phase))
+    _emit_trace_step(agent_trace)
 
 
 # -------------------------------------------------------------------------------------
 
 
-def run_build_assistant(user_input: str) -> str:
+def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None) -> str:
     """
     Analysis (once) → recommendation loop (up to 3) with ``validate_build`` after each
     Proposed build. Collects ``agent_trace`` for UI (task outputs + validation steps).
+
+    If ``stream_queue`` is set, each new trace entry is pushed as
+    ``{"event": "trace", "entry": ...}`` for SSE clients.
 
     Success: ``success``, ``build``, ``total``, ``savings`` (35% of total), ``analysis``, ``agent_trace``.
     Exhausted retries: ``success: false``, ``error``, ``agent_trace``.
@@ -374,11 +390,14 @@ def run_build_assistant(user_input: str) -> str:
     parts_data = load_parts()
     agent_trace: list[dict[str, Any]] = [{"kind": "session_start", "user_input": user_input}]
     trace_tok = _agent_trace_buffer.set(agent_trace)
+    stream_tok = _stream_queue.set(stream_queue) if stream_queue is not None else None
 
+    _emit_trace_step(agent_trace)
     raw_output = ""
     llm_ready = resolve_llm() is not None
     if llm_ready:
         agent_trace.append({"kind": "phase", "phase": "analysis", "status": "started"})
+        _emit_trace_step(agent_trace)
         analyst = analysis_agent()
         analysis_task = Task(
             description=(
@@ -411,6 +430,7 @@ def run_build_assistant(user_input: str) -> str:
             except Exception as e:
                 raw_output = json.dumps({"_crew_error": str(e)})
                 agent_trace.append({"kind": "crew_error", "phase": "analysis", "message": str(e)})
+                _emit_trace_step(agent_trace)
         finally:
             _task_trace_phase.reset(phase_tok)
 
@@ -435,6 +455,7 @@ def run_build_assistant(user_input: str) -> str:
             "llm_used": llm_ready,
         }
     )
+    _emit_trace_step(agent_trace)
 
     category, rules_pct, rules_usd = budget_rules_for_analysis(analysis)
 
@@ -450,6 +471,7 @@ def run_build_assistant(user_input: str) -> str:
                 "prior_validation_error": error,
             }
         )
+        _emit_trace_step(agent_trace)
 
         recommendation_result = ""
         if llm_ready:
@@ -488,6 +510,7 @@ def run_build_assistant(user_input: str) -> str:
                             "message": str(e),
                         }
                     )
+                    _emit_trace_step(agent_trace)
             finally:
                 _task_trace_phase.reset(phase_tok)
         else:
@@ -498,6 +521,7 @@ def run_build_assistant(user_input: str) -> str:
                     "attempt": attempt + 1,
                 }
             )
+            _emit_trace_step(agent_trace)
 
         selected_ids: dict[str, str] = {}
         try:
@@ -516,6 +540,7 @@ def run_build_assistant(user_input: str) -> str:
                 "errors": validation.get("errors", []),
             }
         )
+        _emit_trace_step(agent_trace)
 
         if validation.get("passed") is True:
             total = total_price_for_build(build)
@@ -538,6 +563,8 @@ def run_build_assistant(user_input: str) -> str:
             out = json.dumps(payload, indent=2)
             print(out)
             _agent_trace_buffer.reset(trace_tok)
+            if stream_tok is not None:
+                _stream_queue.reset(stream_tok)
             return out
 
         errs = validation.get("errors") or []
@@ -558,6 +585,8 @@ def run_build_assistant(user_input: str) -> str:
     out_fail = json.dumps(fail, indent=2)
     print(out_fail)
     _agent_trace_buffer.reset(trace_tok)
+    if stream_tok is not None:
+        _stream_queue.reset(stream_tok)
     return out_fail
 
 

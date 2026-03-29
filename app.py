@@ -1,11 +1,16 @@
-"""Flask web UI for Gestalt PC Builder — mock /build until agents are wired."""
+"""Flask web UI for Gestalt PC Builder — crew-backed /build and streaming /build/stream."""
 
 from __future__ import annotations
 
+import json
+import queue
+import threading
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template
 from dotenv import load_dotenv
+from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+
+from crew import run_build_assistant
 
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
@@ -24,26 +29,75 @@ def index() -> str:
 
 @app.route("/build", methods=["POST"])
 def build():
-    # Mock data – later you'll replace with real agents
-    mock_build = {
-        "cpu": {"name": "AMD Ryzen 5 5600X", "price": 299},
-        "gpu": {"name": "NVIDIA RTX 3060", "price": 329},
-        "ram": {"name": "16GB DDR4 3200MHz", "price": 75},
-        "storage": {"name": "1TB NVMe SSD", "price": 100},
-        "motherboard": {"name": "B550 ATX", "price": 150},
-        "psu": {"name": "650W 80+ Gold", "price": 90},
-        "case": {"name": "Mid Tower", "price": 70},
-    }
-    total = sum(p["price"] for p in mock_build.values())
-    savings = 150  # mock savings
-    return jsonify(
-        {
-            "success": True,
-            "build": mock_build,
-            "total": total,
-            "savings": savings,
-            "analysis": "Mock analysis: This build is great for gaming.",
-        }
+    body = request.get_json(silent=True) or {}
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        return jsonify({"error": "Missing or empty prompt"}), 400
+    try:
+        raw = run_build_assistant(prompt)
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid crew response"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(data)
+
+
+@app.route("/build/stream", methods=["POST"])
+def build_stream():
+    body = request.get_json(silent=True) or {}
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        return jsonify({"error": "Missing or empty prompt"}), 400
+
+    def generate():
+        q: queue.Queue = queue.Queue()
+        result: dict = {"payload": None, "err": None}
+
+        def worker() -> None:
+            try:
+                raw = run_build_assistant(prompt, stream_queue=q)
+                result["payload"] = json.loads(raw)
+            except json.JSONDecodeError as e:
+                result["err"] = f"Invalid crew response: {e}"
+            except Exception as e:
+                result["err"] = str(e)
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+        while t.is_alive() or not q.empty():
+            try:
+                item = q.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            yield "data: " + json.dumps(item, default=str) + "\n\n"
+        t.join(timeout=600)
+        if result["err"]:
+            yield "data: " + json.dumps({"event": "error", "message": result["err"]}, default=str) + "\n\n"
+        elif result["payload"] is not None:
+            yield (
+                "data: "
+                + json.dumps({"event": "complete", "data": result["payload"]}, default=str)
+                + "\n\n"
+            )
+        else:
+            yield (
+                "data: "
+                + json.dumps(
+                    {"event": "error", "message": "Build finished without a result."},
+                    default=str,
+                )
+                + "\n\n"
+            )
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 

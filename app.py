@@ -8,6 +8,7 @@ import queue
 import threading
 from pathlib import Path
 
+from pydantic import ValidationError
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
@@ -15,6 +16,7 @@ from crew import run_build_assistant
 from eli5 import Eli5UnavailableError, generate_eli5_explanation
 from intake import analyze_build_intake, merge_user_clarification
 from price_comparison import enrich_crew_payload_with_pricing
+from schemas import BuildRequest, ExplainRequest
 
 _ROOT = Path(__file__).resolve().parent
 
@@ -83,9 +85,32 @@ def index() -> str:
     return render_template("index.html")
 
 
+@app.route("/healthz")
+def healthz():
+    """
+    Lightweight health endpoint for deploy checks and judge scans.
+
+    Environment-driven metadata is optional:
+    - GESTALT_VERSION: human-readable version tag (e.g. "0.1.0" or "hackathon-final")
+    - GIT_SHA: git commit SHA when available in CI/CD
+    """
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "gestalt",
+            "version": (os.environ.get("GESTALT_VERSION") or "").strip() or None,
+            "commit": (os.environ.get("GIT_SHA") or "").strip() or None,
+        }
+    )
+
+
 @app.route("/build", methods=["POST"])
 def build():
-    body = request.get_json(silent=True) or {}
+    try:
+        req = BuildRequest.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as e:
+        return jsonify({"error": "Invalid request", "details": e.errors()}), 400
+    body = req.model_dump()
     merged, original = _resolve_merged_prompt(body)
     if not merged.strip():
         return jsonify({"error": "Missing or empty prompt"}), 400
@@ -113,7 +138,11 @@ def build():
 
 @app.route("/build/stream", methods=["POST"])
 def build_stream():
-    body = request.get_json(silent=True) or {}
+    try:
+        req = BuildRequest.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as e:
+        return jsonify({"error": "Invalid request", "details": e.errors()}), 400
+    body = req.model_dump()
     merged, original = _resolve_merged_prompt(body)
     if not merged.strip():
         return jsonify({"error": "Missing or empty prompt"}), 400
@@ -214,9 +243,12 @@ def build_stream():
 @app.route("/explain", methods=["POST"])
 def explain_eli5():
     """Beginner-friendly explanation for a completed build (requires Gemini API key)."""
-    body = request.get_json(silent=True) or {}
-    build = body.get("build")
-    analysis = body.get("analysis")
+    try:
+        req = ExplainRequest.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as e:
+        return jsonify({"error": "Invalid request", "details": e.errors()}), 400
+    build = req.build
+    analysis = req.analysis
     if not isinstance(build, dict) or not build:
         return jsonify({"error": "Missing or empty build"}), 400
     if analysis is not None and not isinstance(analysis, dict):

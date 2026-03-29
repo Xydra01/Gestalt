@@ -48,11 +48,42 @@ uv run gestalt-web
 # http://127.0.0.1:5000
 ```
 
-CLI entrypoint: **`gestalt-web`** → `app:main` (Flask dev server on port **5000**).
+CLI entrypoint: **`gestalt-web`** → `app:main` (Flask dev server). Defaults to **http://127.0.0.1:5000**; set **`PORT`** and **`HOST=0.0.0.0`** if you need another bind (e.g. container or LAN).
 
 ```bash
 uv run python crew.py
 ```
+
+### Deploy on [Render](https://render.com) (Web Service)
+
+Use **Python 3**, branch **`main`**, empty **Root Directory** if this repo is the app root.
+
+**Build Command** (pick one):
+
+- **pip (works without a valid `uv.lock`):**  
+  `pip install --upgrade pip && pip install .`
+- **uv (if your lockfile syncs cleanly):**  
+  `uv sync --frozen --no-dev && uv cache prune --ci`
+
+**Start Command** (production WSGI — do **not** use `flask run` / `gestalt-web` on Render):
+
+```bash
+gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --worker-class gthread --timeout 300
+```
+
+Render sets **`PORT`** automatically. Use **`--timeout 300`** (or higher) so long **SSE** `/build/stream` responses are less likely to be cut off.
+
+**Environment variables** in the Render dashboard (mirror `.env.example`):
+
+| Variable | Notes |
+|----------|--------|
+| **`GEMINI_API_KEY`** or **`GOOGLE_API_KEY`** | Required for full CrewAI + ELI5 behavior. |
+| **`GESTALT_LLM_MODEL`** | Optional LiteLLM id for Crew (e.g. `gemini/gemini-2.5-flash`). |
+| **`GESTALT_ELI5_MODEL`** | Optional `google.genai` model id for `/explain`. |
+| **`RAINFOREST_API_KEY`**, **`SCRAPINGBEE_API_KEY`** | Optional live pricing. |
+| **`FLASK_DEBUG`** | Omit or `0` in production. |
+
+Optional: commit **`render.yaml`** and use Render **Blueprint** to provision the service; edit `plan` / `name` as needed.
 
 ## Environment variables
 

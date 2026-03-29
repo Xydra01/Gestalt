@@ -6,7 +6,9 @@ import json
 import os
 import queue
 import threading
+import time
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 from dotenv import load_dotenv
@@ -19,6 +21,25 @@ from price_comparison import enrich_crew_payload_with_pricing
 from schemas import BuildRequest, ExplainRequest
 
 _ROOT = Path(__file__).resolve().parent
+
+_STARTED_AT = time.time()
+_METRICS: dict[str, Any] = {
+    "build_started": 0,
+    "build_completed": 0,
+    "build_errored": 0,
+    "eli5_requested": 0,
+    "eli5_errored": 0,
+    "last_build_duration_ms": None,
+}
+
+
+def _inc(metric: str, by: int = 1) -> None:
+    v = _METRICS.get(metric, 0)
+    _METRICS[metric] = (int(v) if isinstance(v, int) else 0) + by
+
+
+def _set(metric: str, value: Any) -> None:
+    _METRICS[metric] = value
 
 
 def _sse_pack(*, event: str | None = None, data: object | None = None) -> str:
@@ -104,6 +125,54 @@ def healthz():
     )
 
 
+@app.route("/version")
+def version():
+    """Runtime metadata for debugging and deploy verification."""
+    import platform
+    import sys
+
+    return jsonify(
+        {
+            "service": "gestalt",
+            "version": (os.environ.get("GESTALT_VERSION") or "").strip() or None,
+            "commit": (os.environ.get("GIT_SHA") or "").strip() or None,
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+            "uptime_s": round(time.time() - _STARTED_AT, 3),
+        }
+    )
+
+
+@app.route("/metrics")
+def metrics():
+    """
+    Minimal Prometheus-style metrics.
+
+    This is intentionally lightweight and in-memory: it's meant as a judge/audit signal and
+    basic production visibility, not a full monitoring stack.
+    """
+    lines: list[str] = []
+    lines.append("# HELP gestalt_build_started Total build runs started.")
+    lines.append("# TYPE gestalt_build_started counter")
+    lines.append(f"gestalt_build_started {_METRICS.get('build_started', 0)}")
+    lines.append("# HELP gestalt_build_completed Total build runs completed successfully.")
+    lines.append("# TYPE gestalt_build_completed counter")
+    lines.append(f"gestalt_build_completed {_METRICS.get('build_completed', 0)}")
+    lines.append("# HELP gestalt_build_errored Total build runs that ended in error.")
+    lines.append("# TYPE gestalt_build_errored counter")
+    lines.append(f"gestalt_build_errored {_METRICS.get('build_errored', 0)}")
+    lines.append("# HELP gestalt_eli5_requested Total ELI5 requests.")
+    lines.append("# TYPE gestalt_eli5_requested counter")
+    lines.append(f"gestalt_eli5_requested {_METRICS.get('eli5_requested', 0)}")
+    lines.append("# HELP gestalt_eli5_errored Total ELI5 requests that errored.")
+    lines.append("# TYPE gestalt_eli5_errored counter")
+    lines.append(f"gestalt_eli5_errored {_METRICS.get('eli5_errored', 0)}")
+    last = _METRICS.get("last_build_duration_ms")
+    lines.append("# HELP gestalt_last_build_duration_ms Duration of the last completed build in milliseconds.")
+    lines.append("# TYPE gestalt_last_build_duration_ms gauge")
+    lines.append(f"gestalt_last_build_duration_ms {last if isinstance(last, (int, float)) else 'NaN'}")
+    return Response("\n".join(lines) + "\n", mimetype="text/plain; version=0.0.4")
+
 @app.route("/build", methods=["POST"])
 def build():
     try:
@@ -125,14 +194,20 @@ def build():
                 "merged_prompt": merged,
             }
         )
+    _inc("build_started")
+    started = time.time()
     try:
         raw = run_build_assistant(merged)
         data = json.loads(raw)
         data = _safe_enrich_pricing(data)
     except json.JSONDecodeError:
+        _inc("build_errored")
         return jsonify({"error": "Invalid crew response"}), 500
     except Exception as e:
+        _inc("build_errored")
         return jsonify({"error": str(e)}), 500
+    _inc("build_completed")
+    _set("last_build_duration_ms", round((time.time() - started) * 1000))
     return jsonify(data)
 
 
@@ -179,6 +254,8 @@ def build_stream():
 
         q: queue.Queue = queue.Queue()
         result: dict = {"payload": None, "err": None}
+        _inc("build_started")
+        started = time.time()
 
         def worker() -> None:
             try:
@@ -223,10 +300,14 @@ def build_stream():
             yield _sse_pack(event="trace", data=item)
         t.join(timeout=600)
         if result["err"]:
+            _inc("build_errored")
             yield _sse_pack(event="error", data={"message": result["err"]})
         elif result["payload"] is not None:
+            _inc("build_completed")
+            _set("last_build_duration_ms", round((time.time() - started) * 1000))
             yield _sse_pack(event="complete", data=result["payload"])
         else:
+            _inc("build_errored")
             yield _sse_pack(event="error", data={"message": "Build finished without a result."})
 
     return Response(
@@ -253,13 +334,17 @@ def explain_eli5():
         return jsonify({"error": "Missing or empty build"}), 400
     if analysis is not None and not isinstance(analysis, dict):
         return jsonify({"error": "analysis must be an object"}), 400
+    _inc("eli5_requested")
     try:
         text = generate_eli5_explanation(build, analysis)
     except Eli5UnavailableError as e:
+        _inc("eli5_errored")
         return jsonify({"error": str(e)}), 503
     except ValueError as e:
+        _inc("eli5_errored")
         return jsonify({"error": str(e)}), 400
     except Exception as e:
+        _inc("eli5_errored")
         return jsonify({"error": str(e)}), 500
     return jsonify({"eli5": text})
 

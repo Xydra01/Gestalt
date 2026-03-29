@@ -1,4 +1,4 @@
-"""Tests for parts_catalog loading (local fallback; no network for remote URL)."""
+"""Tests for parts_catalog loading (bundled JSON or embedded mock only)."""
 
 from __future__ import annotations
 

@@ -25,6 +25,12 @@ _SCRAPINGBEE_API_URL = "https://app.scrapingbee.com/api/v1/"
 _EBAY_SEARCH_BASE = "https://www.ebay.com/sch/i.html"
 _REQUEST_TIMEOUT_SEC = 3
 
+
+def ebay_search_url_for_query(query: str) -> str:
+    """Direct link to eBay search results for ``query`` (used as the buy/search URL)."""
+    nkw = quote_plus((query or "").strip())
+    return f"{_EBAY_SEARCH_BASE}?_nkw={nkw}"
+
 # Note returned by :func:`get_ebay_price` on success.
 EBAY_PRICE_NOTE = "Live eBay price"
 
@@ -139,8 +145,7 @@ def scrape_ebay_price(query: str, api_key: str) -> int | None:
     if not (query and str(query).strip() and api_key and str(api_key).strip()):
         return None
 
-    nkw = quote_plus(query.strip())
-    ebay_url = f"{_EBAY_SEARCH_BASE}?_nkw={nkw}"
+    ebay_url = ebay_search_url_for_query(query)
 
     params = {
         "api_key": api_key.strip(),
@@ -188,4 +193,5 @@ def get_ebay_price(part_name: str, scrapingbee_key: str | None = None) -> dict[s
         "source": "ebay",
         "price": price,
         "note": EBAY_PRICE_NOTE,
+        "url": ebay_search_url_for_query(part_name),
     }

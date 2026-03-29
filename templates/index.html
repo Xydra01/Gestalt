@@ -64,22 +64,117 @@
   </main>
 
   <script>
+    function formatRowPrice(part) {
+      const pc = part.price_comparison;
+      let p = part.price;
+      let tag = "";
+      if (pc && pc.effective_price != null) {
+        p = pc.effective_price;
+        tag = pc.price_basis === "live" ? " · live" : " · catalog";
+      }
+      if (p == null) return "—";
+      return "$" + escapeHtml(String(p)) + (tag ? '<span class="hx-text-dim">' + escapeHtml(tag) + "</span>" : "");
+    }
+
+    function formatBuyLinks(part) {
+      const pc = part.price_comparison;
+      if (!pc) {
+        return '<span class="hx-text-dim">—</span>';
+      }
+      const am = pc.amazon || {};
+      const eb = pc.ebay || {};
+      const out = [];
+      if (pc.best_url && pc.price_basis === "live" && pc.effective_price != null) {
+        out.push(
+          '<a class="hx-btn hx-btn-primary hx-btn-sm" href="' +
+            encodeURI(pc.best_url) +
+            '" target="_blank" rel="noopener noreferrer">Best ~$' +
+            escapeHtml(String(Math.round(Number(pc.effective_price)))) +
+            "</a>"
+        );
+      }
+      if (am.available && am.url && pc.best_deal !== "amazon") {
+        out.push(
+          '<a class="hx-btn hx-btn-ghost hx-btn-sm" href="' +
+            encodeURI(am.url) +
+            '" target="_blank" rel="noopener noreferrer">Amazon $' +
+            escapeHtml(String(am.price)) +
+            "</a>"
+        );
+      }
+      if (eb.available && eb.url && pc.best_deal !== "ebay") {
+        out.push(
+          '<a class="hx-btn hx-btn-ghost hx-btn-sm" href="' +
+            encodeURI(eb.url) +
+            '" target="_blank" rel="noopener noreferrer">eBay $' +
+            escapeHtml(String(eb.price)) +
+            "</a>"
+        );
+      }
+      if (!out.length && pc.best_url) {
+        out.push(
+          '<a class="hx-btn hx-btn-ghost hx-btn-sm" href="' +
+            encodeURI(pc.best_url) +
+            '" target="_blank" rel="noopener noreferrer">Browse listings</a>'
+        );
+      }
+      if (!out.length) {
+        return '<span class="hx-text-dim">Catalog price · enable API keys for live links</span>';
+      }
+      return '<div class="hx-buy-row" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' + out.join("") + "</div>";
+    }
+
     function formatBuildTable(build) {
       if (!build || typeof build !== "object") return "";
-      const rows = Object.entries(build).map(
-        ([key, part]) =>
+      const rows = Object.entries(build).map(function ([key, part]) {
+        return (
           "<tr><td><span class=\"hx-mono\">" +
           escapeHtml(key) +
           "</span></td><td>" +
           escapeHtml(part.name || "—") +
-          "</td><td class=\"hx-text-mint\">$" +
-          (part.price != null ? escapeHtml(String(part.price)) : "—") +
+          "</td><td class=\"hx-text-mint\">" +
+          formatRowPrice(part) +
+          "</td><td>" +
+          formatBuyLinks(part) +
           "</td></tr>"
-      );
+        );
+      });
       return (
-        "<div class=\"hx-table-wrap hx-leaderboard\"><table class=\"hx-table\"><thead><tr><th>Part</th><th>Name</th><th>Price</th></tr></thead><tbody>" +
+        "<div class=\"hx-table-wrap hx-leaderboard\"><table class=\"hx-table\"><thead><tr><th>Part</th><th>Name</th><th>Price</th><th>Buy</th></tr></thead><tbody>" +
         rows.join("") +
         "</tbody></table></div>"
+      );
+    }
+
+    function formatPricingSummary(pr) {
+      if (!pr || typeof pr !== "object") return "";
+      const cross = pr.cross_retailer_savings != null ? pr.cross_retailer_savings : 0;
+      const fee = pr.build_service_savings_estimate != null ? pr.build_service_savings_estimate : 0;
+      const rate = pr.build_fee_rate_applied != null ? pr.build_fee_rate_applied : 0;
+      const tot = pr.estimated_savings_total != null ? pr.estimated_savings_total : 0;
+      const basis = pr.pricing_basis || "";
+      return (
+        '<div class="hx-panel" style="margin-top:16px;padding:14px 16px">' +
+        '<div class="hx-label" style="margin-bottom:8px">Estimated savings breakdown</div>' +
+        '<p class="hx-body" style="margin:0 0 8px 0;color:var(--hx-text-muted)">' +
+        "Cross-retailer (cheaper of Amazon vs eBay when both returned): " +
+        '<span class="hx-text-mint">$' +
+        escapeHtml(String(cross)) +
+        "</span>. " +
+        "Typical PC build service fee avoided (" +
+        escapeHtml(String(Math.round(rate * 1000) / 10)) +
+        "% of parts total): " +
+        '<span class="hx-text-mint">$' +
+        escapeHtml(String(fee)) +
+        "</span>." +
+        "</p>" +
+        '<p class="hx-body-lg" style="margin:0">' +
+        "Total estimated savings: " +
+        '<span class="hx-text-lavender hx-glow-lavender">$' +
+        escapeHtml(String(tot)) +
+        "</span> " +
+        (basis ? '<span class="hx-badge hx-badge-lavender">' + escapeHtml(basis) + "</span>" : "") +
+        "</p></div>"
       );
     }
 
@@ -177,15 +272,18 @@
         let html = formatBuildTable(data.build);
         if (data.total != null) {
           html +=
-            '<div class="hx-total-bar"><span>Total: <span class="hx-text-lavender">$' +
+            '<div class="hx-total-bar"><span>Parts total (live where available): <span class="hx-text-lavender">$' +
             escapeHtml(String(data.total)) +
             "</span></span>" +
             (data.savings != null
-              ? '<span class="hx-savings">Est. savings vs prebuilt: $' +
+              ? '<span class="hx-savings">Est. savings (retail spread + build-fee): $' +
                 escapeHtml(String(data.savings)) +
                 "</span>"
               : "") +
             "</div>";
+        }
+        if (data.pricing) {
+          html += formatPricingSummary(data.pricing);
         }
         resultEl.innerHTML = html;
         setBadge("Ready", "mint");

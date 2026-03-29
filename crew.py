@@ -245,7 +245,7 @@ def draft_recommendation_prompt(
     rules_pct_s = json.dumps(rules_pct, indent=2)
     rules_usd_s = json.dumps(rules_usd, indent=2)
     parts_s = json.dumps(parts_data, indent=2)
-    return f"""You are a PC parts selector. You have access to the full parts catalog below (live or bundled fallback).
+    return f"""You are a PC parts selector. You have access to the full parts catalog below (bundled JSON).
 Given this build analysis: {analysis_s}
 {previous_validation_line}
 

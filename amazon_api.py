@@ -11,7 +11,7 @@ import json
 import os
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote_plus, urlencode
 from urllib.request import Request, urlopen
 
 # Environment variable used by :func:`get_amazon_price` when no key is passed in code.
@@ -19,6 +19,19 @@ RAINFOREST_API_KEY_ENV = "RAINFOREST_API_KEY"
 
 _RAINFOREST_REQUEST_URL = "https://api.rainforestapi.com/request"
 _REQUEST_TIMEOUT_SEC = 3
+
+
+def _amazon_search_fallback_url(query: str) -> str:
+    """Public Amazon search URL when the API does not return a product link."""
+    return f"https://www.amazon.com/s?k={quote_plus((query or "").strip())}"
+
+
+def _extract_product_link(product: dict[str, Any]) -> str | None:
+    for k in ("link", "url", "product_url", "product_link"):
+        v = product.get(k)
+        if isinstance(v, str) and v.strip().startswith("http"):
+            return v.strip()
+    return None
 
 
 def _extract_first_result_price_title(product: dict[str, Any]) -> tuple[int, str] | None:
@@ -50,18 +63,18 @@ def _extract_first_result_price_title(product: dict[str, Any]) -> tuple[int, str
     return (price_int, title)
 
 
-def search_amazon(query: str, api_key: str) -> tuple[int, str] | None:
+def search_amazon(query: str, api_key: str) -> tuple[int, str, str] | None:
     """
-    Search Amazon via Rainforest API and return the first organic result's price and title.
+    Search Amazon via Rainforest API and return the first organic result's price, title,
+    and product or search URL.
 
     Calls ``GET https://api.rainforestapi.com/request`` with ``api_key``, ``type=search``,
     and ``search_term`` set to ``query``. Uses a 3-second socket timeout.
 
     Returns:
-        ``(price, title)`` where ``price`` is a whole-dollar integer (rounded from the API
-        float) and ``title`` is the listing title, or ``None`` if the request fails,
-        times out, returns invalid JSON, has no results, or the first hit has no usable
-        price/title.
+        ``(price, title, url)`` where ``url`` is a product link when the API provides one,
+        otherwise a fallback Amazon search URL for ``query``. ``None`` if the request fails
+        or the first hit has no usable price/title.
 
     Args:
         query: Search string (e.g. PC part name).
@@ -77,6 +90,7 @@ def search_amazon(query: str, api_key: str) -> tuple[int, str] | None:
         {
             "api_key": api_key.strip(),
             "type": "search",
+            "amazon_domain": "amazon.com",
             "search_term": query.strip(),
         }
     )
@@ -105,7 +119,12 @@ def search_amazon(query: str, api_key: str) -> tuple[int, str] | None:
     if not isinstance(first, dict):
         return None
 
-    return _extract_first_result_price_title(first)
+    pt = _extract_first_result_price_title(first)
+    if pt is None:
+        return None
+    price, title = pt
+    link = _extract_product_link(first) or _amazon_search_fallback_url(query)
+    return (price, title, link)
 
 
 def get_amazon_price(part_name: str, amazon_key: str | None = None) -> dict[str, Any] | None:
@@ -117,7 +136,8 @@ def get_amazon_price(part_name: str, amazon_key: str | None = None) -> dict[str,
     or search fails, returns ``None``.
 
     Returns:
-        ``{"source": "amazon", "price": int, "title": str}`` on success, else ``None``.
+        ``{"source": "amazon", "price": int, "title": str, "url": str}`` on success,
+        else ``None``.
     """
     api_key = (amazon_key or "").strip() or os.environ.get(RAINFOREST_API_KEY_ENV, "").strip()
     if not api_key:
@@ -127,5 +147,5 @@ def get_amazon_price(part_name: str, amazon_key: str | None = None) -> dict[str,
     if out is None:
         return None
 
-    price, title = out
-    return {"source": "amazon", "price": price, "title": title}
+    price, title, url = out
+    return {"source": "amazon", "price": price, "title": title, "url": url}

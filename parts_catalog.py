@@ -1,35 +1,30 @@
 """
-Load the PC parts catalog: prefer a live URL, then bundled JSON, then a tiny embedded mock.
+Load the PC parts catalog from bundled ``parts.json``, with a tiny embedded fallback.
 
-Primary source is ``PARTS_CATALOG_URL`` (HTTP/HTTPS JSON). When that is unset or fails,
-we fall back to ``parts.json`` next to this package. Logging records which path was used.
+Live **prices** for picked parts come from Amazon/eBay in :mod:`price_comparison`, using
+catalog ``price`` when live data is unavailable — there is no remote catalog JSON.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
-from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parent
 
-PARTS_CATALOG_URL_ENV = "PARTS_CATALOG_URL"
 _FALLBACK_FILENAME = "parts.json"
-_REMOTE_TIMEOUT_SEC = 15
 
 # Returned as the second element of :func:`load_parts_catalog` for callers / UI.
-SOURCE_REMOTE = "remote_url"
 SOURCE_LOCAL_JSON = "local_json"
 SOURCE_EMBEDDED_MOCK = "embedded_mock"
 
 
 def _embedded_minimal_catalog() -> dict[str, Any]:
-    """Last-resort catalog when no remote data and no readable local file."""
+    """Last-resort catalog when the bundled file is missing or invalid."""
     return {
         "cpus": [{"id": "c1", "price": 200, "socket": "AM5", "tdp": 105}],
         "gpus": [{"id": "g1", "price": 400, "tdp": 200, "length_mm": 300}],
@@ -52,44 +47,13 @@ def load_parts_catalog() -> tuple[dict[str, Any], str]:
     Load parts data for agents and validation.
 
     Order:
-        1. Remote JSON from ``PARTS_CATALOG_URL`` (if set).
-        2. Local ``parts.json`` in the package directory.
-        3. Embedded minimal dict (offline / missing file).
+        1. Local ``parts.json`` in the package directory.
+        2. Embedded minimal dict (missing/unreadable file).
 
     Returns:
-        ``(catalog_dict, source)`` where ``source`` is one of
-        :data:`SOURCE_REMOTE`, :data:`SOURCE_LOCAL_JSON`, :data:`SOURCE_EMBEDDED_MOCK`.
+        ``(catalog_dict, source)`` where ``source`` is :data:`SOURCE_LOCAL_JSON` or
+        :data:`SOURCE_EMBEDDED_MOCK`.
     """
-    url = (os.environ.get(PARTS_CATALOG_URL_ENV) or "").strip()
-    if url:
-        try:
-            req = Request(url, headers={"Accept": "application/json", "User-Agent": "Gestalt/0.1"})
-            with urlopen(req, timeout=_REMOTE_TIMEOUT_SEC) as resp:
-                body = resp.read().decode("utf-8")
-            data: Any = json.loads(body)
-            if _looks_like_pc_catalog(data):
-                logger.info("Loaded parts catalog from live URL: %s", url)
-                return data, SOURCE_REMOTE
-            logger.warning(
-                "Live catalog URL %s returned JSON that is not a valid PC parts catalog; "
-                "falling back to local file %s",
-                url,
-                _FALLBACK_FILENAME,
-            )
-        except Exception as e:
-            logger.warning(
-                "Could not load live parts catalog from %s (%s); falling back to local file %s",
-                url,
-                e,
-                _FALLBACK_FILENAME,
-            )
-    else:
-        logger.info(
-            "%s is not set — using local bundled catalog %s (set this env var for a live JSON endpoint)",
-            PARTS_CATALOG_URL_ENV,
-            _FALLBACK_FILENAME,
-        )
-
     path = _ROOT / _FALLBACK_FILENAME
     if path.is_file():
         try:
@@ -114,5 +78,5 @@ def load_parts_catalog() -> tuple[dict[str, Any], str]:
             path,
         )
 
-    logger.warning("Using embedded minimal parts catalog (no usable live or local catalog)")
+    logger.warning("Using embedded minimal parts catalog (no readable %s)", _FALLBACK_FILENAME)
     return _embedded_minimal_catalog(), SOURCE_EMBEDDED_MOCK

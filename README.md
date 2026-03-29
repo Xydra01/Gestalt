@@ -6,8 +6,8 @@
 
 ```text
 gestalt/
-├── parts.json           # fallback catalog when no live URL
-├── parts_catalog.py     # load live URL → else parts.json → else embedded mock
+├── parts.json           # bundled parts catalog (compatibility + list prices)
+├── parts_catalog.py     # load parts.json → else embedded minimal catalog
 ├── compatibility_checker.py
 ├── agents.py
 ├── crew.py
@@ -46,9 +46,9 @@ uv run pytest tests/test_gemini_smoke.py -v
 
 Override the model for this check: **`GESTALT_GEMINI_SMOKE_MODEL`** (google.genai id, default **`gemini-2.5-flash`**). This is separate from **`GESTALT_LLM_MODEL`**, which uses CrewAI/LiteLLM naming.
 
-## Parts catalog
+## Parts catalog and pricing
 
-Gestalt prefers a **live** JSON catalog when **`PARTS_CATALOG_URL`** is set in `.env` (HTTP/HTTPS). If the variable is unset, the URL fails, or the payload is not a valid PC catalog shape, the app **falls back** to bundled **`parts.json`**, then to a tiny embedded mock. Check logs (standard logging) to see which source was used; API responses from `run_build_assistant` also include **`parts_catalog_source`**.
+Agents and the compatibility checker use **bundled `parts.json`** (or a tiny embedded catalog if the file is missing). **Live prices** for the picked parts come from **Amazon (Rainforest)** and **eBay (ScrapingBee)** when **`RAINFOREST_API_KEY`** / **`SCRAPINGBEE_API_KEY`** are set; otherwise list prices from the catalog are used. API responses include **`parts_catalog_source`** (`local_json` or `embedded_mock`) and **`pricing`** after enrichment in the web app.
 
 ## Git remote (SSH)
 

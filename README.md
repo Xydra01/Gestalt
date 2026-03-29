@@ -153,6 +153,16 @@ uv run pytest tests/test_gemini_smoke.py -v
 
 Mark **`integration`** is reserved for tests that need real API keys or network (see `pyproject.toml` markers).
 
+## SSE smoke check (black-box)
+
+If the server is running locally on port 5000, you can quickly verify SSE formatting end-to-end:
+
+```bash
+python3 scripts/sse_smoke.py
+# or with a different base URL:
+python3 scripts/sse_smoke.py http://127.0.0.1:5000
+```
+
 ## Git remote (SSH)
 
 `git@github.com:Xydra01/Gestalt.git`

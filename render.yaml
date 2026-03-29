@@ -1,0 +1,13 @@
+# Optional Render Blueprint: connect the repo and use "Apply" to create/update the web service.
+# You can instead create the service manually and paste Build / Start commands from README.
+
+services:
+  - type: web
+    name: gestalt
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install .
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --worker-class gthread --timeout 300
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"

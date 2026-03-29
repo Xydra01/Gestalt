@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from agents import analysis_agent, recommendation_agent, resolve_llm
 from compatibility_checker import validate_build
+from parts_catalog import load_parts_catalog
 
 _ROOT = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
@@ -207,24 +208,14 @@ def infer_use_case_from_prompt(text: str) -> str | None:
 
 
 def load_parts() -> dict[str, Any]:
-    """Load PC parts from parts.json; fall back to a tiny mock if missing."""
-    path = _ROOT / "parts.json"
-    if path.is_file():
-        with path.open(encoding="utf-8") as f:
-            return json.load(f)
-    return {
-        "cpus": [{"id": "c1", "price": 200, "socket": "AM5", "tdp": 105}],
-        "gpus": [{"id": "g1", "price": 400, "tdp": 200, "length_mm": 300}],
-        "motherboards": [{"id": "m1", "price": 150, "socket": "AM5", "ddr_support": "DDR5"}],
-        "ram": [{"id": "r1", "price": 80, "ddr_gen": "DDR5"}],
-        "psus": [{"id": "p1", "price": 100, "wattage": 750}],
-        "cases": [{"id": "case1", "price": 90, "max_gpu_length_mm": 350}],
-    }
+    """Backward-compatible: full catalog dict only (see :func:`load_parts_catalog` for source)."""
+    data, _src = load_parts_catalog()
+    return data
 
 
 # --- Recommendation: prompt, parse IDs, map to parts ---------------------------------
 
-# Order used when assembling the final build dict (Selector slot name -> parts.json key).
+# Order used when assembling the final build dict (Selector slot name -> catalog category key).
 RECOMMENDATION_SLOTS: list[str] = ["cpu", "gpu", "motherboard", "ram", "psu", "case"]
 SLOT_TO_PARTS_KEY: dict[str, str] = {
     "cpu": "cpus",
@@ -254,7 +245,7 @@ def draft_recommendation_prompt(
     rules_pct_s = json.dumps(rules_pct, indent=2)
     rules_usd_s = json.dumps(rules_usd, indent=2)
     parts_s = json.dumps(parts_data, indent=2)
-    return f"""You are a PC parts selector. You have access to parts.json.
+    return f"""You are a PC parts selector. You have access to the full parts catalog below (bundled JSON).
 Given this build analysis: {analysis_s}
 {previous_validation_line}
 
@@ -387,8 +378,14 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
     Success: ``success``, ``build``, ``total``, ``savings`` (35% of total), ``analysis``, ``agent_trace``.
     Exhausted retries: ``success: false``, ``error``, ``agent_trace``.
     """
-    parts_data = load_parts()
-    agent_trace: list[dict[str, Any]] = [{"kind": "session_start", "user_input": user_input}]
+    parts_data, parts_catalog_source = load_parts_catalog()
+    agent_trace: list[dict[str, Any]] = [
+        {
+            "kind": "session_start",
+            "user_input": user_input,
+            "parts_catalog_source": parts_catalog_source,
+        }
+    ]
     trace_tok = _agent_trace_buffer.set(agent_trace)
     stream_tok = _stream_queue.set(stream_queue) if stream_queue is not None else None
 
@@ -552,6 +549,7 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
                 "savings": savings,
                 "analysis": analysis,
                 "agent_trace": agent_trace,
+                "parts_catalog_source": parts_catalog_source,
             }
             if os.environ.get("GESTALT_DEBUG"):
                 payload["raw_llm_output"] = raw_output[:4000]
@@ -581,6 +579,7 @@ def run_build_assistant(user_input: str, stream_queue: queue.Queue | None = None
         "success": False,
         "error": "Could not build compatible PC after 3 attempts",
         "agent_trace": agent_trace,
+        "parts_catalog_source": parts_catalog_source,
     }
     out_fail = json.dumps(fail, indent=2)
     print(out_fail)

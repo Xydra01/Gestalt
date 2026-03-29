@@ -11,8 +11,16 @@ from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 from crew import run_build_assistant
+from price_comparison import enrich_crew_payload_with_pricing
 
 _ROOT = Path(__file__).resolve().parent
+
+
+def _safe_enrich_pricing(data: dict) -> dict:
+    try:
+        return enrich_crew_payload_with_pricing(data)
+    except Exception:
+        return data
 load_dotenv(_ROOT / ".env")
 
 app = Flask(
@@ -36,6 +44,7 @@ def build():
     try:
         raw = run_build_assistant(prompt)
         data = json.loads(raw)
+        data = _safe_enrich_pricing(data)
     except json.JSONDecodeError:
         return jsonify({"error": "Invalid crew response"}), 500
     except Exception as e:
@@ -57,7 +66,8 @@ def build_stream():
         def worker() -> None:
             try:
                 raw = run_build_assistant(prompt, stream_queue=q)
-                result["payload"] = json.loads(raw)
+                data = json.loads(raw)
+                result["payload"] = _safe_enrich_pricing(data)
             except json.JSONDecodeError as e:
                 result["err"] = f"Invalid crew response: {e}"
             except Exception as e:

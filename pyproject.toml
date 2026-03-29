@@ -5,10 +5,15 @@ description = "Gestalt: parts compatibility UI and CrewAI crew"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "beautifulsoup4>=4.12.0",
     "crewai[tools,google-genai]>=0.100.0",
     "flask>=3.0.0",
     "python-dotenv>=1.0.0",
 ]
+
+# lancedb 0.30.1+ has no win_amd64 wheels; CrewAI pulls lancedb transitively.
+[tool.uv]
+override-dependencies = ["lancedb==0.30.0"]
 
 [project.scripts]
 gestalt-web = "app:main"
@@ -18,7 +23,16 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["app", "agents", "crew", "compatibility_checker"]
+py-modules = [
+    "app",
+    "agents",
+    "crew",
+    "compatibility_checker",
+    "parts_catalog",
+    "amazon_api",
+    "ebay_api",
+    "price_comparison",
+]
 
 [dependency-groups]
 dev = ["pytest>=8"]
@@ -26,3 +40,6 @@ dev = ["pytest>=8"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: needs network / API keys; use -m \"not integration\" to skip",
+]

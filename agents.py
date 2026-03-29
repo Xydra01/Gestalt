@@ -28,7 +28,7 @@ Return ONLY a JSON object:
 
 User request: {user_input}"""
 
-_RECOMMENDATION_PROMPT = """You are a PC parts selector. You have access to parts.json.
+_RECOMMENDATION_PROMPT = """You are a PC parts selector. You have access to the parts catalog (injected in the task).
 Given this build analysis: {analysis}
 And this validation error (if any): {error}
 
@@ -79,7 +79,7 @@ def analysis_agent() -> Agent:
 
 
 def recommendation_agent() -> Agent:
-    """Agent 2 – Recommendation: select part IDs from parts.json given analysis and errors."""
+    """Agent 2 – Recommendation: select part IDs from the injected catalog given analysis and errors."""
     llm = resolve_llm()
     kwargs: dict[str, Any] = {
         "role": "PC parts selector",
